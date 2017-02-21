@@ -334,7 +334,7 @@ class ReconstructInducer(object):
 
         endTime = time.clock()
         print 'Optimization complete'
-        print 'The code run for %d epochs, with %f epochs/sec' % (epoch, 1. * epoch / (endTime - startTime))
+        print 'The code run for %d epochs, with avg epoch duration %f sec' % (epoch, (endTime - startTime) / float(epoch))
         print >> sys.stderr, ('The code for file ' + os.path.split(__file__)[1] +
                               ' ran for %.1fs' % ((endTime - startTime)))
 
@@ -672,10 +672,18 @@ if __name__ == '__main__':
     optimization = args.optimization
     modelName = args.model_name
     model = args.model
-    fixedSampling = eval(args.fixed_sampling)
-    extEmb = eval(args.ext_emb)
-    extendedReg = eval(args.extended_reg)
-    frequentEval = eval(args.frequent_eval)
+    fixedSampling = args.fixed_sampling
+    if type(args.fixed_sampling) == str:
+        fixedSampling = eval(args.fixed_sampling)
+    extEmb = args.ext_emb
+    if type(args.ext_emb) == str:
+        extEmb = eval(args.ext_emb)
+    extendedReg = args.extended_reg
+    if type(args.extended_reg) == str:
+        extendedReg = eval(args.extended_reg)
+    frequentEval = args.frequent_eval
+    if type(frequentEval) == str:
+        frequentEval = eval(frequentEval)
     alpha = args.alpha
     inducer = ReconstructInducer(indexedData, goldStandard, rand, maxEpochs, learningRate,
                                  batchSize, embedSize, lambdaL1, lambdaL2, optimization, modelName,
