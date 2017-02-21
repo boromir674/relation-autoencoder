@@ -683,7 +683,7 @@ if __name__ == '__main__':
         extendedReg = eval(args.extended_reg)
     frequentEval = args.frequent_eval
     if type(frequentEval) == str:
-        frequentEval = eval(frequentEval)
+        frequentEval == eval(frequentEval)
     alpha = args.alpha
     inducer = ReconstructInducer(indexedData, goldStandard, rand, maxEpochs, learningRate,
                                  batchSize, embedSize, lambdaL1, lambdaL2, optimization, modelName,
