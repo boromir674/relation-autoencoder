@@ -1,4 +1,6 @@
+__pycache__/
 *.pk
 .idea*
 *.json*
-
+*.pyc
+*init__*

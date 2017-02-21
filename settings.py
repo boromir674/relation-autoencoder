@@ -13,4 +13,3 @@ elems_to_visualize = 5
 
 low = -1.e-3
 high = 1.e-3
-
