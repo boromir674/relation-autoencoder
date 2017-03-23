@@ -218,10 +218,7 @@ class singleLabelClusterEvaluation:
             F1B3 = (2 * recB3 * precB3) / (recB3 + precB3)
             F05B3 = ((1+betasquare) * recB3 * precB3)/((betasquare*precB3)+recB3)
 
-        print validOrTrain, ' Elementwise B3 F1 =', F1B3, 'F0.5 =', F05B3, 'B3 recall =', recB3, 'B3 precision =', precB3
-
-
-        
+        print '{} f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(validOrTrain, F1B3, precB3, recB3)  # validOrTrain, 'f1:', F1B3, 'pre:', precB3, 'rec:', recB3
 
     def getF05(self):
         recB3 = self.b3TotalElementRecall()
