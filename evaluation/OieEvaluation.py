@@ -1,13 +1,10 @@
-__author__ = 'diego'
-
 import pickle
 import math
-import argparse
 import os
 import sys
-from processing.OiePreprocessor import FeatureLexicon
 
-class singleLabelClusterEvaluation:
+
+class SingleLabelClusterEvaluation:
     def __init__(self, referencePath, file, validationPath=''):
         self.relations = {}
         if file:
@@ -22,11 +19,9 @@ class singleLabelClusterEvaluation:
             # print self.referenceSets
             # print self.assessableElemSet
 
-    def createResponse(self, response):
+    def create_response(self, response):
         self.numberOfElements, self.responseSets = self.createResponseSets(response)
         # print self.responseSets
-
-
 
     def b3precision(self, response_a, reference_a):
         # print response_a.intersection(self.assessableElemSet), 'in precision'
@@ -34,8 +29,6 @@ class singleLabelClusterEvaluation:
 
     def b3recall(self, response_a, reference_a):
         return len(response_a.intersection(reference_a)) / float(len(reference_a))
-
-
 
     def b3TotalElementPrecision(self):
         totalPrecision = 0.0
@@ -57,7 +50,6 @@ class singleLabelClusterEvaluation:
 
         return totalRecall / float(len(self.assessableElemSet))
 
-
     def b3TotalClusterPrecision(self):
         totalPrecision = 0.0
         for c in self.responseSets:
@@ -65,7 +57,7 @@ class singleLabelClusterEvaluation:
                 if r in self.assessableElemSet:
                     totalPrecision += self.b3precision(self.responseSets[c],
                                                        self.findCluster(r, self.referenceSets)) / \
-                                      float(len(self.responseSets)*len(self.responseSets[c]))
+                                      float(len(self.responseSets) * len(self.responseSets[c]))
         return totalPrecision
 
     def b3TotalClusterRecall(self):
@@ -74,10 +66,9 @@ class singleLabelClusterEvaluation:
             for r in self.responseSets[c]:
                 if r in self.assessableElemSet:
                     totalRecall += self.b3recall(self.responseSets[c], self.findCluster(r, self.referenceSets)) / \
-                                   float(len(self.responseSets)*len(self.responseSets[c]))
+                                   float(len(self.responseSets) * len(self.responseSets[c]))
 
         return totalRecall
-
 
     def createResponseSets(self, response):
         responseSets = {}
@@ -88,8 +79,6 @@ class singleLabelClusterEvaluation:
                 responseSets[c] = set(response[c])
 
         return numElem, responseSets
-
-
 
     def createReferenceSets(self, referencePath):
         with open(referencePath, 'r') as f:
@@ -140,7 +129,6 @@ class singleLabelClusterEvaluation:
                     referenceSets[relations[rel][0]] = set([rel])
         return referenceSets, assessableElems
 
-
     def createReferenceSetsFromData(self, relations):
         self.relations = relations
         referenceSets = {}
@@ -160,8 +148,8 @@ class singleLabelClusterEvaluation:
         for c in setsDictionary:
             if a in setsDictionary[c]:
                 return setsDictionary[c]
-        #         foundClusters.append(setsDictionary[c])
-        # return foundClusters
+                #         foundClusters.append(setsDictionary[c])
+                # return foundClusters
 
     def muc3Recall(self):
         numerator = 0.0
@@ -180,7 +168,8 @@ class singleLabelClusterEvaluation:
         for c in self.responseSets:
             if len(self.responseSets[c]) > 0:
                 # print self.lenAssessableResponseCat(self.responseSets[c]), self.overlap(self.responseSets[c], self.referenceSets)
-                numerator += self.lenAssessableResponseCat(self.responseSets[c]) - self.overlap(self.responseSets[c], self.referenceSets)
+                numerator += self.lenAssessableResponseCat(self.responseSets[c]) - self.overlap(self.responseSets[c],
+                                                                                                self.referenceSets)
                 lenRespo = self.lenAssessableResponseCat(self.responseSets[c])
                 if lenRespo != 0:
                     denominator += self.lenAssessableResponseCat(self.responseSets[c]) - 1
@@ -196,7 +185,6 @@ class singleLabelClusterEvaluation:
                 numberIntersections += 1
         return numberIntersections
 
-
     def lenAssessableResponseCat(self, responesSet_c):
         length = 0
         for r in responesSet_c:
@@ -204,8 +192,12 @@ class singleLabelClusterEvaluation:
                 length += 1
         return length
 
-    def printEvaluation(self, validOrTrain):
+    def print_metrics(self, validOrTrain):
+        """Prints f1, precision and recall scores
 
+        :param validOrTrain:
+        :return:
+        """
 
         recB3 = self.b3TotalElementRecall()
         precB3 = self.b3TotalElementPrecision()
@@ -216,10 +208,10 @@ class singleLabelClusterEvaluation:
         else:
             betasquare = math.pow(0.5, 2)
             F1B3 = (2 * recB3 * precB3) / (recB3 + precB3)
-            F05B3 = ((1+betasquare) * recB3 * precB3)/((betasquare*precB3)+recB3)
+            F05B3 = ((1 + betasquare) * recB3 * precB3) / ((betasquare * precB3) + recB3)
 
-        print '{} f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(validOrTrain, F1B3, precB3, recB3)  # validOrTrain, 'f1:', F1B3, 'pre:', precB3, 'rec:', recB3
-
+        print '{} f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(validOrTrain, F1B3, precB3,
+                                                     recB3)  # validOrTrain, 'f1:', F1B3, 'pre:', precB3, 'rec:', recB3
     def getF05(self):
         recB3 = self.b3TotalElementRecall()
         precB3 = self.b3TotalElementPrecision()
@@ -227,7 +219,7 @@ class singleLabelClusterEvaluation:
         if recB3 == 0.0 and precB3 == 0.0:
             F05B3 = 0.0
         else:
-            F05B3 = ((1+betasquare) * recB3 * precB3)/((betasquare*precB3)+recB3)
+            F05B3 = ((1 + betasquare) * recB3 * precB3) / ((betasquare * precB3) + recB3)
         return F05B3
 
     def getF1(self):
@@ -239,37 +231,3 @@ class singleLabelClusterEvaluation:
         else:
             F1B3 = (2 * recB3 * precB3) / (recB3 + precB3)
         return F1B3
-
-def loadData(pickled_dataset):
-
-    if not os.path.exists(pickled_dataset):
-        print "Pickled dataset not found"
-        sys.exit()
-
-    pklFile = open(pickled_dataset, 'rb')
-
-    featureExtrs = pickle.load(pklFile)
-
-    relationLexicon = pickle.load(pklFile)
-
-    data = pickle.load(pklFile)
-
-    goldStandard = pickle.load(pklFile)
-
-    pklFile.close()
-
-
-    return goldStandard
-
-def getCommandArgs():
-    parser = argparse.ArgumentParser(description='Trains a basic Open Information Extraction Model')
-
-    parser.add_argument('--pickled_dataset', metavar='pickled_dataset', nargs='?', required=True,
-                        help='the pickled dataset file (produced by OiePreprocessor.py)')
-    parser.add_argument('--pickled_results', metavar='pickled_results', nargs='?', required=True,
-                        help='the pickled results file (produced by OiePreprocessor.py)')
-
-
-    return parser.parse_args()
-
-

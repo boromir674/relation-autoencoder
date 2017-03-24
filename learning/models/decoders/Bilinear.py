@@ -1,118 +1,80 @@
+import theano
+from Decoder import Decoder
+import numpy as np
+from math import sqrt
+import theano.tensor as T
+
 __author__ = 'enfry'
 
-import math
-import theano
-from definitions import settings
-import numpy as np
-import theano.tensor as T
-from collections import OrderedDict
-import cPickle as pickle
 
-class Bilinear(object):
+class Bilinear(Decoder):
+    """An inmplementation of the RESCAL _factorization decoder"""
 
-    def __init__(self, rng, embedSize, relationNum, argVocSize, data, ex_emb):
+    def __init__(self, rng, neg_samples_num, batch_size, r, m, n, A_np):
+        super(Bilinear, self).__init__(rng, neg_samples_num, batch_size, r, m, n, A_np)
+        RNP = np.asarray(rng.normal(0, sqrt(0.1), size=(r, r, m)), dtype=theano.config.floatX)
+        self.R = theano.shared(value=RNP, name='R')  # (r,r,m)
+        self.A = theano.shared(value=A_np, name='A')  # (n,r)
+        self.Ab = theano.shared(value=np.zeros(self.n,  dtype=theano.config.floatX), name='Ab', borrow=True)  # (n,)
 
-        self.k = embedSize
-        self.r = relationNum
-        self.a = argVocSize
+    def get_parameters(self):
+        return [self.R, self.A, self.Ab]
 
-        a = self.a
-        k = self.k
-        r = self.r
+    def get_l1_regularization_term_computation(self):
+        return T.sum(abs(self.R))  # (1,)
 
+    def get_l2_regularization_term_computation(self):
+        return T.sum(T.sqr(self.R))  # (1,)
 
+    def get_scores(self, args1, args2, relation_probs, neg1, neg2, entropy):
 
-        # KxK matrix for each argument-argument for each relation
-        CNP = np.asarray(rng.normal(0, math.sqrt(0.1), size=(k, k, r)), dtype=theano.config.floatX)
+        argembed1 = self.A[args1]  # (l,r)
+        argembed2 = self.A[args2]  # (l,r)
 
+        weighted_R = T.tensordot(relation_probs, self.R, axes=[[1], [2]])  # (l,m) x (r,r,m) = (l,r,r)
+        one = self._factorization(ent1_embeddings=argembed1, ent2_embeddings=argembed2, weighted_r=weighted_R)  # (l,)
 
-        self.C = theano.shared(value=CNP, name='C')
-        # self.C = theano.printing.Print("C = ")(self.C)
-                # argument embeddings
-        ANP = np.asarray(rng.uniform(-0.01, 0.01, size=(a, k)), dtype=theano.config.floatX)
+        u = T.concatenate([one + self.Ab[args1], one + self.Ab[args2]])  # (2l,)
 
-        if ex_emb:
-            import gensim
-            external_embeddings = gensim.models.Word2Vec.load(settings.external_embeddings_path)
-            for idArg in xrange(self.a):
-                arg = data.id2Arg[idArg].lower().split(' ')
-                new = np.zeros(k, dtype=theano.config.floatX)
-                size = 0
-                for ar in arg:
-                    if ar in external_embeddings:
-                        new += external_embeddings[ar]
-                        size += 1
-                if size > 0:
-                    ANP[idArg] = new/size
+        logScoresP = T.log(T.nnet.sigmoid(u))  # (2l,)
+        allScores = T.concatenate([logScoresP, entropy, entropy])  # (4l,)
 
-        self.A = theano.shared(value=ANP, name='A')  # (a1, k)
+        negembed1 = self.A[neg1.flatten()].reshape((self.s, self.l, self.r))  # (s,l,r)
+        negembed2 = self.A[neg2.flatten()].reshape((self.s, self.l, self.r))  # (s,l,r)
+        negOne = self._neg_factorization1(neg_emb1=negembed1, args_emb2=argembed2, weighted_r=weighted_R)  # (l,s)
+        negTwo = self._neg_factorization2(argsEmbA=argembed1, negEmbB=negembed2, wC=weighted_R)  # (l,s)
 
-        self.Ab = theano.shared(value=np.zeros(a,  dtype=theano.config.floatX),  # @UndefinedVariable
-                                 name='Ab', borrow=True)
-
-        self.updates = OrderedDict({self.A: self.A / T.sqrt(T.sum(T.sqr(self.A), axis=0))})
-        self.normalize = theano.function([], [], updates=self.updates)
-
-        # self.params = [self.C, self.A]
-        self.params = [self.C, self.A, self.Ab]
-
-
-
-    def factorization(self, batchSize, argsEmbA, argsEmbB, wC):
-
-        # first = T.tensordot(relationProbs, self.C, axes=[[1], [2]])  # [l,r] * [k,k,r] = [l, k, k]
-        Afirst = T.batched_tensordot(wC, argsEmbA, axes=[[1], [1]])  # [l, k, k] * [l, k] = [l, k]
-        Asecond = T.batched_dot(Afirst, argsEmbB)  # [l, k] * [l, k] = [l]
-        # entropy = T.sum(T.log(relationProbs) * relationProbs, axis=1)  # [l,r] * [l,r] = [l]
-        return Asecond
-
-    def negFactorization1(self, batchSize, negEmbA, argsEmbB, wC):
-        # first = T.tensordot(relationProbs, self.C, axes=[[1], [2]])  # [l,r] * [k,k,r] = [l, k, k]
-        Afirst = T.batched_tensordot(wC, negEmbA.dimshuffle(1, 2, 0), axes=[[1], [1]])  # [l, k, k] * [n, l, k] = [l, k, n]
-        Asecond = T.batched_tensordot(Afirst, argsEmbB, axes=[[1], [1]])  # [l, k, n] * [l, k] = [l, n]
-        return Asecond
-
-    def negFactorization2(self, batchSize, argsEmbA, negEmbB, wC):
-        # first = T.tensordot(relationProbs, self.C, axes=[[1], [2]])  # [l,r] * [k,k,r] = [l, k, k]
-        Afirst = T.batched_tensordot(wC, argsEmbA, axes=[[1], [1]])  # [l, k, k] * [l, k] = [l, k]
-        Asecond = T.batched_tensordot(Afirst, negEmbB.dimshuffle(1, 2, 0), axes=[[1], [1]])  # [l, k] * [l, k, n] = [l, n]
-        return Asecond
-
-
-    def getScores(self, args1, args2, l, n, relationProbs, neg1, neg2, entropy):
-        argembed1 = self.A[args1]
-        argembed2 = self.A[args2]
-
-        weightedC = T.tensordot(relationProbs, self.C, axes=[[1], [2]])
-        one = self.factorization(batchSize=l,
-                                 argsEmbA=argembed1,
-                                 argsEmbB=argembed2,
-                                 wC=weightedC)  # [l,n]
-
-        u = T.concatenate([one + self.Ab[args1], one + self.Ab[args2]])
-
-        logScoresP = T.log(T.nnet.sigmoid(u))
-
-        allScores = logScoresP
-        allScores = T.concatenate([allScores, entropy, entropy])
-
-
-        negembed1 = self.A[neg1.flatten()].reshape((n, l, self.k))
-        negembed2 = self.A[neg2.flatten()].reshape((n, l, self.k))
-        negOne = self.negFactorization1(batchSize=l,
-                                        negEmbA=negembed1,
-                                        argsEmbB=argembed2,
-                                        wC=weightedC)
-
-        negTwo = self.negFactorization2(batchSize=l,
-                                        argsEmbA=argembed1,
-                                        negEmbB=negembed2,
-                                        wC=weightedC)
-
-        g = T.concatenate([negOne + self.Ab[neg1].dimshuffle(1, 0),
-                           negTwo + self.Ab[neg2].dimshuffle(1, 0)])
-        logScores = T.log(T.nnet.sigmoid(-g))
-        allScores = T.concatenate([allScores, logScores.flatten()])
+        g = T.concatenate([negOne + self.Ab[neg1].dimshuffle(1, 0), negTwo + self.Ab[neg2].dimshuffle(1, 0)])  # (2l,s)
+        logScores = T.log(T.nnet.sigmoid(-g))  # (2l,s)
+        allScores = T.concatenate([allScores, logScores.flatten()])  # (4l+2ls,)
         return allScores
 
+    def _factorization(self, ent1_embeddings, ent2_embeddings, weighted_r):
+        """
+        :param ent1_embeddings: (l,r)
+        :param ent2_embeddings: (l,r)
+        :param weighted_r: (l,r,r)
+        :return: array (l,)
+        """
+        Afirst = T.batched_tensordot(weighted_r, ent1_embeddings, axes=[[1], [1]])  # (l,r,r) x (l,r) = (l,r)
+        return T.batched_dot(Afirst, ent2_embeddings)  # (l,r) x (l,r) = (l,)
 
+    def _neg_factorization1(self, neg_emb1, args_emb2, weighted_r):
+        """
+        :param neg_emb1: (s,l,r)
+        :param args_emb2: (l,r)
+        :param weighted_r: (l,r,r)
+        :return: (l,)
+        """
+        Afirst = T.batched_tensordot(weighted_r, neg_emb1.dimshuffle(1, 2, 0), axes=[[1], [1]])  # (l,r,r) x (l,r,s) = (l,r,s)
+        return T.batched_tensordot(Afirst, args_emb2, axes=[[1], [1]])  # (l,r,s) x (l,r) = (l,s)
+
+    def _neg_factorization2(self, argsEmbA, negEmbB, wC):
+        """
+        :param argsEmbA: (l,r)
+        :param negEmbB: (s,l,r)
+        :param wC: (l,r,r)
+        :return:
+        """
+        Afirst = T.batched_tensordot(wC, argsEmbA, axes=[[1], [1]])  # (l,r,r) x (l,r) = (l,r)
+        return T.batched_tensordot(Afirst, negEmbB.dimshuffle(1, 2, 0), axes=[[1], [1]])  # (l,r) x (l,r,s) = (l,s)

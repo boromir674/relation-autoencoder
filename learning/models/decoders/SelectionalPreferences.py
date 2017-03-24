@@ -1,122 +1,51 @@
-__author__ = 'enfry'
-
 import math
 import theano
-from definitions import settings
 import numpy as np
 import theano.tensor as T
-import cPickle as pickle
-
-class SelectionalPreferences(object):
-
-    def __init__(self, rng, embedSize, relationNum, argVocSize, data, ex_emb):
-
-        self.k = embedSize
-        self.r = relationNum
-        self.a = argVocSize
-
-        a = self.a
-        k = self.k
-        r = self.r
+from Decoder import Decoder
 
 
-        # Selectional Preferences
-        Ca1NP = np.asarray(rng.normal(0, math.sqrt(0.1), size=(k, r)), dtype=theano.config.floatX)
-        Ca2NP = np.asarray(rng.normal(0, math.sqrt(0.1), size=(k, r)), dtype=theano.config.floatX)
-        self.C1 = theano.shared(value=Ca1NP, name='C1')
-        self.C2 = theano.shared(value=Ca2NP, name='C2')
+class SelectionalPreferences(Decoder):
 
-        # argument embeddings
-        ANP = np.asarray(rng.uniform(-0.01, 0.01, size=(a, k)), dtype=theano.config.floatX)  # @UndefinedVariable
+    def __init__(self, rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb):
+        super(SelectionalPreferences, self).__init__(rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb)
+        # Selectional Preferences of arguments/entities 1 and 2
+        Ca1NP = np.asarray(rng.normal(0, math.sqrt(0.1), size=(self.r, self.m)), dtype=theano.config.floatX)  # [ c_{11}, c_{12}, c_{13}, ..., c_{1m} ]
+        Ca2NP = np.asarray(rng.normal(0, math.sqrt(0.1), size=(self.r, self.m)), dtype=theano.config.floatX)  # [ c_{21}, c_{22}, c_{23}, ..., c_{2m} ]
 
-        if ex_emb:
-            import gensim
-            external_embeddings = gensim.models.Word2Vec.load(settings.external_embeddings_path)
+        self.C1 = theano.shared(value=Ca1NP, name='C1')  # (r,m)
+        self.C2 = theano.shared(value=Ca2NP, name='C2')  # (r,m)
+        self.A = theano.shared(value=self.A_np, name='A')  # (n,r)
+        self.Ab = theano.shared(value=np.zeros(self.n,  dtype=theano.config.floatX), name='Ab', borrow=True)  # (n,)
 
-            for idArg in xrange(self.a):
-                arg = data.id2Arg[idArg].lower().split(' ')
-                new = np.zeros(k, dtype=theano.config.floatX)
-                size = 0
-                for ar in arg:
-                    if ar in external_embeddings:
-                        new += external_embeddings[ar]
-                        size += 1
-                if size > 0:
-                    ANP[idArg] = new/size
+    def get_parameters(self):
+        return [self.A, self.C1, self.C2, self.Ab]
 
-        self.A = theano.shared(value=ANP, name='A')  # (a1, k)
+    def get_l1_regularization_term_computation(self):
+        return T.sum(abs(self.C1)) + T.sum(abs(self.C2))  # (1,)
 
-        self.Ab = theano.shared(value=np.zeros(a,  dtype=theano.config.floatX),  # @UndefinedVariable
-                                name='Ab', borrow=True)
+    def get_l2_regularization_term_computation(self):
+        return T.sum(T.sqr(self.C1)) + T.sum(T.sqr(self.C2))  # (1,)
 
-        self.params = [self.A, self.C1, self.C2, self.Ab]
+    def get_scores(self, args1, args2, relation_probs, neg1, neg2, entropy):
+        weightedC1 = T.dot(relation_probs, self.C1.dimshuffle(1, 0))  # (l,m) x (m,r) = (l,r)
+        weightedC2 = T.dot(relation_probs, self.C2.dimshuffle(1, 0))  # (l,m) x (m,r) = (l,r)
 
+        left_factorization = T.batched_dot(weightedC1, self.A[args1.flatten()])  # (l,r) x (l,r) = (l,)
+        right_factorization = T.batched_dot(weightedC2, self.A[args1.flatten()])  # (l,r) x (l,r) = (l,)
+        one = left_factorization + right_factorization  # (l,)
 
+        u = T.concatenate([one + self.Ab[args1], one + self.Ab[args2]])  # (2l,)
+        allScores = T.concatenate([T.log(T.nnet.sigmoid(u)), entropy, entropy])  # (4l,)
 
+        negembed1 = self.A[neg1.flatten()].reshape((self.s, self.l, self.r))  # (s,l,r)
+        negembed2 = self.A[neg2.flatten()].reshape((self.s, self.l, self.r))  # (s,l,r)
+        neg_left_factorization = T.batched_tensordot(weightedC1, negembed1.dimshuffle(1, 2, 0), axes=[[1], [1]])  # (l,r) x (l,r,s) = (l,s)
+        neg_right_factorization = T.batched_tensordot(weightedC2, negembed2.dimshuffle(1, 2, 0), axes=[[1], [1]])  # (l,r) x (l,r,n) = (l,s)
 
-
-    def leftMostFactorization(self, batchSize, args, wC1):
-        l = batchSize
-        k = self.k  # embed size
-        r = self.r  # relation number
-        argEmbeds = self.A[args.flatten()]
-        Afirst = T.batched_dot(wC1, argEmbeds)
-        return Afirst
-
-    def rightMostFactorization(self, batchSize, args, wC2):
-        l = batchSize
-        k = self.k  # embed size
-        r = self.r  # relation number
-        argEmbeds2 = self.A[args.flatten()]
-        Asecond = T.batched_dot(wC2, argEmbeds2)
-        return Asecond
-
-
-
-    def negLeftMostFactorization(self, batchSize, negEmbed, wC1):
-        # l = batchSize
-        # k = self.k  # embed size
-        # r = self.r  # relation number
-        Afirst = T.batched_tensordot(wC1, negEmbed.dimshuffle(1, 2, 0), axes=[[1], [1]])  # [l,k] [l,k,n] = [l,n]
-        return Afirst
-
-    def negRightMostFactorization(self, batchSize, negEmbed, wC2):
-        # l = batchSize
-        # k = self.k  # embed size
-        # r = self.r  # relation number
-        Asecond = T.batched_tensordot(wC2, negEmbed.dimshuffle(1, 2, 0), axes=[[1], [1]])  # [l,k] [l,k,n] = [l,n]
-        return Asecond
-
-
-
-    def getScores(self, args1, args2, l, n, relationProbs, neg1, neg2, entropy):
-        weightedC1= T.dot(relationProbs, self.C1.dimshuffle(1, 0))
-        weightedC2= T.dot(relationProbs, self.C2.dimshuffle(1, 0))
-
-        left1 = self.leftMostFactorization(batchSize=l, args=args1, wC1=weightedC1)
-        right1 = self.rightMostFactorization(batchSize=l, args=args2, wC2=weightedC2)
-        one = left1 + right1
-
-        u = T.concatenate([one + self.Ab[args1], one + self.Ab[args2]])
-        logScoresP = T.log(T.nnet.sigmoid(u))
-        allScores = logScoresP
-        allScores = T.concatenate([allScores, entropy, entropy])
-
-        negembed1 = self.A[neg1.flatten()].reshape((n, l, self.k))
-        negembed2 = self.A[neg2.flatten()].reshape((n, l, self.k))
-        negative1 = self.negLeftMostFactorization(batchSize=l,
-                                                  negEmbed=negembed1,
-                                                  wC1=weightedC1)
-        negative2 = self.negRightMostFactorization(batchSize=l,
-                                                  negEmbed=negembed2,
-                                                  wC2=weightedC2)
-
-        negOne = negative1.dimshuffle(1, 0) + right1
-        negTwo = negative2.dimshuffle(1, 0) + left1
-        g = T.concatenate([negOne + self.Ab[neg1], negTwo + self.Ab[neg2]])
-        logScores = T.log(T.nnet.sigmoid(-g))
-        allScores = T.concatenate([allScores, logScores.flatten()])
-
+        negOne = neg_left_factorization.dimshuffle(1, 0) + right_factorization  # (s,l) + (l,) = (s,l)
+        negTwo = neg_right_factorization.dimshuffle(1, 0) + left_factorization  # (s,l) + (l,) = (s,l)
+        g = T.concatenate([negOne + self.Ab[neg1], negTwo + self.Ab[neg2]])  # (2s,l)
+        logScores = T.log(T.nnet.sigmoid(-g))  # (2s,l)
+        allScores = T.concatenate([allScores, logScores.flatten()])  # (4l+2ls,)
         return allScores
-
-
