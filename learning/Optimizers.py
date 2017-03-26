@@ -6,8 +6,8 @@ import theano.tensor as T
 class AdaGrad(object):
     def __init__(self, params):
         """
-        # Create a list of SharedVariables holding arrays of the same shape as all the weight matrices (parameters) of both the encoder and decoder models\n
-        :param params: list of encoder and decoder weight matrices (decoder parameters)
+        # Create a list of SharedVariables holding arrays of the same shape as all the weight matrices (parameters) of both the encoder and decoder_type models\n
+        :param params: list of encoder and decoder_type weight matrices (decoder_type parameters)
         """
         self.accumulator = []
         for para_i in params:
@@ -18,7 +18,7 @@ class AdaGrad(object):
     def update(self, learning_rate, params, cost):
         """AdaGrad computations\n
         :param learning_rate: the rate for the weights updating
-        :param params: list of SharedVariables: ecoder's and decoder's weight matrices
+        :param params: list of SharedVariables: ecoder's and decoder_type's weight matrices
         :param cost: the objective function with respect to which to compute the gradients
         :type cost: scalar (0-dimensional) tensor variable or None
         :return:
@@ -38,7 +38,7 @@ class SGD(object):
     def update(learning_rate, params, cost):
         """Stochastic Gradient Descend computations\n
         :param learning_rate: the rate for the weights updating
-        :param params: list of SharedVariables: ecoder's and decoder's weight matrices
+        :param params: list of SharedVariables: ecoder's and decoder_type's weight matrices
         :type params: list of SharedVariables
         :param cost: the objective function with respect to which to compute the gradients
         :type cost: scalar (0-dimensional) tensor variable or None

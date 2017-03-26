@@ -4,11 +4,12 @@ import numpy as np
 import theano.tensor as T
 from Decoder import Decoder
 
+model_type = 'rescal+sp'
+
 
 class BilinearPlusSP(Decoder):
-
-    def __init__(self, rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb):
-        super(BilinearPlusSP, self).__init__(rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb)
+    def __init__(self, rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb=None):
+        super(BilinearPlusSP, self).__init__(model_type, rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb)
         # for every relation/class model entities relation_labels between each other; m number of r x r matrices;
         CNP = np.asarray(rng.normal(0, math.sqrt(0.1), size=(self.r, self.r, self.m)), dtype=theano.config.floatX)
         # Selectional Preferences

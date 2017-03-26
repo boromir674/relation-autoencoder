@@ -11,7 +11,7 @@ __author__ = 'diego'
 
 class OieModelFunctions(object):
     """
-    A class resposible for 'firing' the encoder and the selected decoder.
+    A class resposible for 'firing' the encoder and the selected decoder_type.
     """
     def __init__(self, rng, embed_size, nb_relations, neg_samples_num, batch_size, model, data, extended_regularizer, alpha, external_embeddings=False):
         """
@@ -25,7 +25,7 @@ class OieModelFunctions(object):
         :type neg_samples_num: int
         :param batch_size: the number of datapoints in each batch
         :type batch_size: int
-        :param model: decoder model; one of 'rescal', 'sp', 'rescal+sp' for 'RESCAL' bilinear, 'Selectional Preferences', 'RESCAL+SP' hybrid
+        :param model: decoder_type model; one of 'rescal', 'sp', 'rescal+sp' for 'RESCAL' bilinear, 'Selectional Preferences', 'RESCAL+SP' hybrid
         :type model: str
         :param data: the encoded dataset
         :type data: learning.OieData.DatasetManager
@@ -55,8 +55,8 @@ class OieModelFunctions(object):
         # L2-norm regularizer; (1,)
         self.L2 = T.sum(T.sqr(self.relationClassifiers.W))  # sums the squared values of flatten tensor
 
-        embds = self._initialize_entity_embeddings(data, self.external_emb)  # (n,r)
-        self.decoder = construct_decoder(model, rng, self.s, self.l, embed_size, nb_relations, data.get_arg_voc_size(), embds)
+        embds = self.initialize_entity_embeddings(data, self.external_emb)  # (n,r)
+        self.decoder = construct_decoder(model, rng, self.s, self.l, embed_size, nb_relations, data.get_arg_voc_size(), init_embds=embds)
         if self.extended_reg:
             self.L1 += self.decoder.get_l1_regularization_term_computation()
             self.L2 += self.decoder.get_l2_regularization_term_computation()
@@ -80,7 +80,13 @@ class OieModelFunctions(object):
         relation_probs = self.relationClassifiers.comp_relation_probs(x_feats=x_feats)  # (l,m) classes probabilities
         entropy = self.alpha * -T.sum(T.log(relation_probs) * relation_probs, axis=1)  # (l,)
         all_scores = self.decoder.get_scores(args1, args2, relation_probs, neg1, neg2, entropy)  # (a*l,)
-        # minimize the negative objective function
+        # minimize the negative objective function; obj_func = T.mean(all_scores)
+        # maximum likelihood solution == minimize negative log-likelihood
+        # max obj_func == min neg_obj_func
+
+        # T.mean(all_scores) : log-likelihood
+        # res_error : negative log-likelihood
+
         res_error = -T.mean(all_scores)  # scalar
         print '  built full computation graph'
         return res_error
@@ -94,7 +100,7 @@ class OieModelFunctions(object):
         """
         return self.relationClassifiers.comp_probs_and_labels(x_feats)
 
-    def _initialize_entity_embeddings(self, data, word2vecflag):
+    def initialize_entity_embeddings(self, data, word2vecflag):
         """Checks the external_embeddings flag and returns a np.array accordingly"""
         A_np = asarray(self.rng.uniform(-0.01, 0.01, size=(data.get_arg_voc_size(), self.r)), dtype=thc.floatX)  # np.asarray
         if word2vecflag == 'True':

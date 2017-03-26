@@ -2,22 +2,24 @@ import os
 import sys
 import time
 import theano
-import settings
 import argparse
 import operator
 import numpy as np
+import settings as s
 import theano.sparse
 import cPickle as pickle
 import theano.tensor as T
 from collections import Counter
+from evaluation.OieEvaluation import *
 from learning.OieData import DatasetSplit
 from learning.OieData import DatasetManager
+from learning.models.decoders.Decoder import *
 from learning.OieModel import OieModelFunctions
 from processing.OiePreprocessor import FeatureLexicon
 from evaluation.Visuals import Visualizator as printer
 from processing.OiePreprocessor import unpickle_objects
-from evaluation.OieEvaluation import SingleLabelClusterEvaluation
 from learning.NegativeExampleGenerator import NegativeExampleGenerator
+from learning.models.encoders.RelationClassifier import IndependentRelationClassifiers
 
 
 class ReconstructInducer(object):
@@ -32,7 +34,7 @@ class ReconstructInducer(object):
         :type gold_standard: dict
         :param rng: a random number generator
         :type rng: numpy.random.RandomState
-        :param nb_epochs: number of training iterations (epochs)
+        :param nb_epochs: number of maximum training iterations
         :type nb_epochs: int
         :param learning_rate: controls the rate of the weight updating, 0 < rate :math:`\\leq` 1
         :type learning_rate: float
@@ -54,7 +56,7 @@ class ReconstructInducer(object):
         :type decoder_model: str {'rescal', 'sp', 'rescal+sp'}
         :param external_embeddings: if True then word2vec generated embeddings are used to initialize the entity embeddings.
         :type external_embeddings: bool
-        :param extended_regularizer: if True uses entropy regularizer for the decoder's weights, in addition to the encoder's ones. If false regularizes only encoder's weights.
+        :param extended_regularizer: if True uses entropy regularizer for the decoder_type's weights, in addition to the encoder's ones. If false regularizes only encoder's weights.
         :type extended_regularizer: bool
         :param frequent_eval: If true uses frequent evaluation... TODO
         :type frequent_eval: bool
@@ -63,7 +65,7 @@ class ReconstructInducer(object):
         """
         self.data = data
         self.goldStandard = gold_standard
-        self.rand = rng
+        self.rng = rng
         self.nb_epochs = nb_epochs
         self.learningRate = learning_rate
         self.batch_size = batch_size
@@ -74,7 +76,7 @@ class ReconstructInducer(object):
         self.lambdaL2 = lambda2
         self.optimization = optimization
         self.modelName = model_name
-        self.decoder = decoder_model
+        self.decoder_type = decoder_model
         self.extEmb = external_embeddings
         self.extendedReg = extended_regularizer
         self.frequentEval = frequent_eval
@@ -85,14 +87,39 @@ class ReconstructInducer(object):
             '_embedsize' + str(embed_size) + '_l1' + str(lambda1) + '_l2' + str(lambda2) + '_opt' + str(optimization) + \
             '_rel_num' + str(self.relationNum) + '_batch' + str(batch_size) + '_negs' + str(self.neg_sample_num)
         self.modelFunc = OieModelFunctions(rng, embed_size, nb_relations, nb_neg_samples, batch_size, decoder_model, self.data, self.extendedReg, self.alpha, external_embeddings=self.extEmb)
+        self.func = dict(zip([s.split_labels[0]]+['label_'+split for split in s.split_labels], [None]*(1+len(s.split_labels))))
+        self.cur_epoch = 0
+        self.evaluator = dict(zip(s.split_labels, [None]*len(s.split_labels)))
+        for split in self.data.generate_split_keys():
+            self.evaluator[split] = construct_split_evaluator(self.goldStandard[split], split)
+        self.batch_reps = dict(zip(s.split_labels, [None]*len(s.split_labels)))
+        for split in self.data.generate_split_keys():
+            self.batch_reps[split] = self.data.split[split].args1.shape[0] / self.batch_size
+        self.cluster = dict(zip(s.split_labels, [None] * len(s.split_labels)))
+
+    def initialize(self):
+        # self.modelFunc.relationClassifiers = IndependentRelationClassifiers(self.rng, self.data.get_dimensionality(), self.relationNum)
+        # embds = self.modelFunc.initialize_entity_embeddings(self.data, self.extEmb)
+        # self.modelFunc.decoder = construct_decoder(self.decoder_type, self.rng, self.neg_sample_num, self.batch_size,
+        #                                            self.embedSize, self.relationNum, self.data.get_arg_voc_size(), init_embds=embds)
+        self.modelFunc = OieModelFunctions(self.rng, self.embedSize, self.relationNum, self.neg_sample_num, self.batch_size, self.decoder_type, self.data, self.extendedReg, self.alpha, external_embeddings=self.extEmb)
+
+    def save(self, file_name):
+        """Saves OieInduction instantiated object in a file with the given name\n.
+        Discards any compiled functions (train and labeling functions) and then pickles the object in the given file\n
+        :param file_name: the name of the file to pickle the object to
+        :type file_name: str
+        """
+        self.func = {}  # dict(zip(['train']+['label_'+split for split in settings.split_labels], [None]*4))
+        with open(settings.models_path + file_name, 'wb') as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     def compile_function(self):
         """ ReconstructInducer compiling capabilities\n
         Compiles the train symbolic function, based on the objective of minimizing the reconstruction error, for joint optimization of the autoencoder parameters.
         Gradients are computed on this symbolic function. It also compiles a labeling function for each of the dataset splits according to the self.data DatasetSplit instance.\n
-        :return: Returns the compiled 'train_function' followed by 1-3 labeling functions in ordered as ['train', 'valid', 'test']
-        :rtype: list
         """
+        print 'Compiling...'
         batch_index = T.lscalar()  # index to the starting index of a mini-batch
         ents_1 = T.ivector()  # (l,)
         ents_2 = T.ivector()  # (l,)
@@ -115,32 +142,32 @@ class ReconstructInducer(object):
         # takes as input an index to the starting point of a mini-batch, and two vectors of the same length as mini-batch.
         # the vectors hold indices to the entities sampled for the 'negative sampling' approximation of the posterior
 
-        trainModel = theano.function(inputs=[batch_index, neg1, neg2], outputs=cost, updates=updates, allow_input_downcast=True,
+        self.func['train'] = theano.function(inputs=[batch_index, neg1, neg2], outputs=cost, updates=updates,
                                      givens={xFeats: train_split.xFeats[batch_index * self.batch_size: (batch_index + 1) * self.batch_size],
                                              ents_1: train_split.args1[batch_index * self.batch_size: (batch_index + 1) * self.batch_size],
                                              ents_2: train_split.args2[batch_index * self.batch_size: (batch_index + 1) * self.batch_size]})
         # maximun likelihood prediction labeling computation expression
         prediction = self.modelFunc.build_label_computation(xFeats)  # tuple
-
-        labeling_functions = []
         for key in self.data.generate_split_keys():
             print "  compiling labeling function for the '" + key + "' set"
-            labeling_functions.append(theano.function(inputs=[batch_index], outputs=prediction, updates=[], givens={
-                xFeats: make_shared(self.data.split[key]).xFeats[batch_index * self.batch_size:(batch_index + 1) * self.batch_size]}))
+            self.func['label_'+key] = theano.function(inputs=[batch_index], outputs=prediction, updates=[], givens={
+                xFeats: make_shared(self.data.split[key]).xFeats[batch_index * self.batch_size:(batch_index + 1) * self.batch_size]})
 
-        return [trainModel] + labeling_functions
+    def train(self):
+        startTime = time.clock()
+        f = self._check_for_compiled_functions()
+        if not f:
+            self.compile_function()
+        self.learn(debug=False)
+        train_duration = time.clock() - startTime
+        print >> sys.stderr, 'Training completed in {:.1f}s'.format(train_duration)
+        print 'Trained for {} epochs. Avg epoch duration: {:.1f}s'.format(self.cur_epoch, train_duration / float(self.cur_epoch))
 
     def learn(self, debug=False):
-
-        print 'Compiling...'
-        functions = self.compile_function()
-
+        # functions = [self.func['train'], self.func['label_train'], self.func['label_valid'], self.func['label_test']]
         # compute number of minibatches for train, validation and test sets
-        batch_reps = [self.data.split[_].args1.shape[0] / self.batch_size for _ in self.data.generate_split_keys()]
-        evaluations = [SingleLabelClusterEvaluation(self.goldStandard[_], False) for _ in self.data.generate_split_keys()]
 
-        print 'Training model on {} examples'.format(batch_reps[0] * self.batch_size)
-        startTime = time.clock()
+        print 'Training model on {} examples'.format(self.data.split['train'].get_size())
         doneLooping = False
         epoch = 0
 
@@ -148,116 +175,90 @@ class ReconstructInducer(object):
             epochStartTime = time.clock()
             err = 0
             epoch += 1
+            self.cur_epoch = epoch
             print '\nEPOCH', epoch
             negativeSamples1 = self.negativeSampler.get_negative_samples(self.data.split['train'].args1.shape[0], self.neg_sample_num)
             negativeSamples2 = self.negativeSampler.get_negative_samples(self.data.split['train'].args2.shape[0], self.neg_sample_num)
 
-            for idx in xrange(batch_reps[0]):
-                neg1 = negativeSamples1[:, idx * self.batch_size: (idx + 1) * self.batch_size]
-                neg2 = negativeSamples2[:, idx * self.batch_size: (idx + 1) * self.batch_size]
-                err += functions[0](idx, neg1, neg2)
-
+            for batch_ind in xrange(self.batch_reps['train']):
+                neg1 = negativeSamples1[:, batch_ind * self.batch_size: (batch_ind + 1) * self.batch_size]
+                neg2 = negativeSamples2[:, batch_ind * self.batch_size: (batch_ind + 1) * self.batch_size]
+                err += self.func['train'](batch_ind, neg1, neg2)  # accumulates total dataset negative log-likelihood. This is being minimized
                 if self.frequentEval:
-                    if self._mode(self.data) == 1:
-                        print idx * self.batch_size, idx, '############################################################'
-                        print self.get_clusters_size(functions[1], batch_reps[0]), '\n'
-                    elif self._mode(self.data) == 2:
-                        print idx * self.batch_size, idx, '############################################################'
-                        for i, key in zip((1, 2), ('Validation', 'Test')):
-                            cluster = self.get_clusters_sets(functions[i + 1], batch_reps[i])
-                            evaluations[i].create_response(cluster)
-                            evaluations[i].print_metrics(key)
+                    if self._mode() == 1:
+                        print batch_ind * self.batch_size, batch_ind, '############################################################'
+                        print self.get_clusters_size(self.func['label_train'], self.batch_reps['train']), '\n'
+                    elif self._mode() == 2:
+                        print batch_ind * self.batch_size, batch_ind, '############################################################'
+                        for split in settings.split_labels[1:]:
+                            cluster = self.get_clusters_sets(self.func['label_'+split], self.batch_reps[split])
+                            self.evaluator[split].feed_induced_clusters(cluster)
+                            self.evaluator[split].print_epoch_metrics(store=False)
 
             epochEndTime = time.clock()
             print 'Training error: {:.4f}'.format(err)
             print 'Epoch duration: {:.1f}s'.format(epochEndTime - epochStartTime)
 
-            if self._mode(self.data) == 1:
+            if self._mode() == 1:
                 print 'Training Set'
-                trainClusters = self.get_clusters_sets(functions[1], batch_reps[0])
-                posteriorsTrain = [functions[1](i)[1] for i in xrange(batch_reps[0])]
-                trainPosteriors = [item for sublist in posteriorsTrain for item in sublist]
-                evaluations[0].create_response(trainClusters)
-
-                if self.modelName != 'Test':
-                    evaluations[0].print_metrics('Training')
-                    # printer.print_clusters(trainClusters, self.data, 'train', settings.elems_to_visualize)
+                self.cluster['train'] = get_clusters_sets(self.func['label_train'], self.batch_reps['train'], self.relationNum)
                 if self.modelName == 'Test':
-                    print 'Test print'
-                    printer.print_clusters(trainClusters, self.data, 'train', settings.elems_to_visualize, goldstandard=self.goldStandard)
-                    # self.getClustersWithFrequencies(trainClusters, self.data, settings.elems_to_visualize)
+                    printer.print_clusters(self.cluster['train'], self.data, 'train', settings.elems_to_visualize, goldstandard=self.goldStandard)
                 else:
-                    printer.print_clusters(trainClusters, self.data, 'train', settings.elems_to_visualize)
-                    # getClustersWithFrequencies(trainClusters, self.data, settings.elems_to_visualize)
-
+                    self._evaluate('train', store=True)
                 if debug:
-                    pickle_clustering(trainClusters, self.modelID+'_epoch'+str(epoch))
-                    if epoch % 5 == 0 and epoch > 0:
-                        pickle_posteriors(trainPosteriors, self.modelID+'_Posteriors_epoch'+str(epoch))
-
-            if self._mode(self.data) == 2:
-                validCluster = self.get_clusters_sets(functions[2], batch_reps[1])
-                posteriorsValid = [functions[2](i)[1] for i in xrange(batch_reps[1])]
-                validPosteriors = [item for sublist in posteriorsValid for item in sublist]
-                evaluations[1].create_response(validCluster)
-                evaluations[1].print_metrics('Validation')
-                printer.print_clusters(validCluster, self.data, 'valid', settings.elems_to_visualize)
-                # getClustersWithFrequenciesValid(validCluster, self.data, settings.elems_to_visualize)
-
+                    # pickle_clustering(trainClusters, self.modelID+'_epoch'+str(epoch))
+                    # if epoch % 5 == 0 and epoch > 0:
+                    #     trainPosteriors = OieInduction.compute_posteriors(self.func['label_train'], self.batch_reps['train'])
+                    #     pickle_posteriors(trainPosteriors, self.modelID+'_Posteriors_epoch'+str(epoch))
+                    self._perform_debug_actions('train')
+            if self._mode() == 2:
+                self.cluster['valid'] = get_clusters_sets(self.func['label_valid'], self.batch_reps['valid'], self.relationNum)
+                self._evaluate('valid', store=True)
                 if debug:
-                    pickle_clustering(validCluster, self.modelID+'_epoch'+str(epoch)+'_valid')
-                    if epoch % 5 == 0 and epoch > 0:
-                        pickle_posteriors(validPosteriors, self.modelID+'_Posteriors_epoch'+str(epoch)+'_valid')
+                    self._perform_debug_actions('valid')
 
-                testCluster = self.get_clusters_sets(functions[3], batch_reps[2])
-                posteriorsTest = [functions[3](i)[1] for i in xrange(batch_reps[2])]
-                testPosteriors = [item for sublist in posteriorsTest for item in sublist]
-                evaluations[2].create_response(testCluster)
-                evaluations[2].print_metrics('Test')
-                printer.print_clusters(testCluster, self.data, 'test', settings.elems_to_visualize)
-                # getClustersWithFrequenciesTest(testCluster, self.data, settings.elems_to_visualize)
-
+                self.cluster['test'] = get_clusters_sets(self.func['label_test'], self.batch_reps['test'], self.relationNum)
+                self._evaluate('test', store=True)
                 if debug:
-                    pickle_clustering(testCluster, self.modelID+'_epoch'+str(epoch)+'_test')
-                    if epoch % 5 == 0 and epoch > 0:
-                        pickle_posteriors(testPosteriors, self.modelID+'_Posteriors_epoch'+str(epoch)+'_test')
+                    self._perform_debug_actions('test')
 
-        endTime = time.clock()
-        print 'Optimization complete'
-        print 'The code run for {} epochs. Avg epoch duration: {:.1f}s'.format(epoch, (endTime - startTime) / float(epoch))
-        print >> sys.stderr, ('The code for file ' + os.path.split(__file__)[1] + ' ran for %.1fs' % (endTime - startTime))
-
-    def get_clusters_sets(self, labeling_func, nb_bathces):
-        """Build cluster ID => set of examples classified/clustered.\n
-        Assigns class labels to the dataset split by maping cluster IDs (int) to sets of example indices (int)\n
-        :param labeling_func: label prediction function
-        :type labeling_func: callable
-        :param nb_bathces: number of batches: batch_size / dataset_size
-        :type nb_bathces: int
-        :return: the dictionary mapping cluster IDs int => sets with example indices int
-        :rtype: dict
-        """
-        clusters = {}
-        for i in xrange(self.relationNum):
-            clusters[i] = set()
-        # clusters = dict(zip(xrange(self.relationNum), [set()] * self.relationNum))  in toy examples it works. In this system it does not!
-        predictions = (item for sublist in (labeling_func(i)[0] for i in xrange(nb_bathces)) for item in sublist)
-        for _, pred in enumerate(predictions):
-            clusters[pred].add(_)
-        return clusters
+    def _evaluate(self, split, print_clusters=True, store=False):
+        self.evaluator[split].feed_induced_clusters(self.cluster[split])
+        self.evaluator[split].print_epoch_metrics(store=store)
+        if print_clusters:
+            printer.print_clusters(self.cluster[split], self.data, split, settings.elems_to_visualize)
+        
+    def _perform_debug_actions(self, split):
+        pickle_clustering(self.cluster[split], self.modelID + '_epoch' + str(self.cur_epoch) + '_' + split)
+        if self.cur_epoch % 5 == 0 and self.cur_epoch > 0:
+            posteriors = OieInduction.compute_posteriors(self.func['label_'+split], self.batch_reps[split])
+            pickle_posteriors(posteriors, self.modelID + '_Posteriors_epoch' + str(self.cur_epoch) + '_test')
 
     @staticmethod
-    def get_clusters_size(labeling_func, nb_bathces):
+    def compute_posteriors(labeling_func, batch_reps):
+        """
+        Computes the posterior class probabilities using the labeling predicting function\n
+        :param labeling_func: a labeling predicting function
+        :param batch_reps: callable
+        :return: the posterior class probabilities in a (m, n) or (nb_classes, nb_examples) shaped array
+        :rtype: numpy.ndarray
+        """
+        struct = [labeling_func(i)[1] for i in xrange(batch_reps)]
+        return [example_probs for batch_posterior_probs in struct for example_probs in batch_posterior_probs]
+
+    @staticmethod
+    def get_clusters_size(labeling_func, nb_batches):
         """Build cluster ID => cluster_size mapping\n
         Computes the population size for each cluster/class/relation using the input train labeling function\n
         :param labeling_func: label prediction function on the 'train' dataset split
         :type labeling_func: callable
-        :param nb_bathces: number of bathces; batch_size / dataset_size
-        :type nb_bathces: int
+        :param nb_batches: number of bathces; batch_size / dataset_size
+        :type nb_batches: int
         :return: a dictionary mapping classes/cluster2pop IDs (int) to cluster size (int)
         :rtype: dict
         """
-        return Counter([item for sublist in map(lambda x: labeling_func(x)[0], xrange(nb_bathces)) for item in sublist])
+        return Counter([item for sublist in map(lambda x: labeling_func(x)[0], xrange(nb_batches)) for item in sublist])
 
     def _initialize_optimization_algorithm(self):
         if self.optimization == 'adagrad':
@@ -269,7 +270,25 @@ class ReconstructInducer(object):
         else:
             raise Exception("Optimizer '{}' not implemented".format(self.optimization))
 
-    def order_triggers(self, clusters):
+    def _check_for_compiled_functions(self):
+        if self._mode() == 1:
+            if self.func['train'] is not None and self.func['label_train'] is not None:
+                return True
+            return False
+        elif self._mode() == 2:
+            if self.func['train'] is not None:
+                for split in self.data.generate_split_keys():
+                    if self.func['label_'+split] is not None:
+                        print 'found', 'label_'+split
+                    else:
+                        break
+                else:
+                    return True
+                return False
+            else:
+                return False
+
+    def get_order_triggers(self, clusters):
         """Build cluster ID => list of sorted triggers\n
         Given the input clustered triggers (dictionary mapping cluster/relations IDs to lists of triggers), builds a dictionary mapping cluster IDs to sorted lists trigger-frequency tuples.
          These lists are sorted in descending order based on frequency values.\n
@@ -280,72 +299,66 @@ class ReconstructInducer(object):
         """
         return dict(zip(xrange(self.relationNum), [sorted(Counter(_).items(), key=operator.itemgetter(1), reverse=True) for _ in clusters.values()]))
 
-    def getClusters(self, labelTrain, trainBatchNum, train_dev):
-        clusters = {}
-        for i in xrange(self.relationNum):
-            clusters[i] = []
-        predictionsTrain = [labelTrain(i)[0] for i in xrange(trainBatchNum)]
-        predictions = [item for sublist in predictionsTrain for item in sublist]  # returns the flatten() list
-        for j in xrange(len(predictions)):
-            clusters[predictions[j]].append(self.data.getExampleRelation(j, train_dev))
-        return clusters
-
-
-    def getClusteredFreq(self, clusters):
-        clustFreq = {}
-        for i in xrange(self.relationNum):
-            clustFreq[i] = {}
-        j = 0
-        for c in clusters:
-            for feat in clusters[c]:
-                if feat in clustFreq[j]:
-                    clustFreq[j][feat] += 1
-                else:
-                    clustFreq[j][feat] = 1
-            clustFreq[j] = sorted(clustFreq[j].iteritems(), key=operator.itemgetter(1), reverse=True)
-            j += 1
-        return clustFreq
-
-    @staticmethod
-    def _mode(data):
+    def _mode(self):
         """
         Returns 1, if 'train' split is the only split.\n
         Returns 2, if 'train', 'valid' and 'test' splits are found.\n
-        :param data: an instance of DatasetManager
-        :type data: learning.OieData.DatasetManager
         :return: {1, 2}
         :rtype: int
         """
-        if len(data.split) == 1 and 'train' in data.split:
+        if len(self.data.split) == 1 and 'train' in self.data.split:
             return 1
-        elif len(
-                data.split) == 3 and 'train' in data.split and 'valid' in data.split and 'test' in data.split:
+        elif len(self.data.split) == 3 and 'train' in self.data.split and 'valid' in self.data.split and 'test' in self.data.split:
             return 2
         else:
             raise Exception("Either 'train' split or 'train', 'valid' and 'test' splits should be defined")
 
-
-def saveModel(model, name):
-    pklProtocol = 2
-    pklFile = open(settings.models_path + name, 'wb')
-    pickle.dump(model, pklFile, protocol=pklProtocol)
-
-def loadModel(name):
-    pklFile = open(settings.models_path + name, 'rb')
-    return pickle.load(pklFile)
-
-def pickleClustering(clustering, clusteringName):
-    pklProtocol = 2
-    pklFile = open(settings.clusters_path + clusteringName, 'wb')
-    pickle.dump(clustering, pklFile, protocol=pklProtocol)
+    @staticmethod
+    def _write_metrics(list_of_metrics, a_file):
+        """Appends list elements to the given file"""
+        with open(a_file, 'a+') as f:
+            f.write(' '.join(list_of_metrics) + '\n')
 
 
-def picklePosteriors(posteriors, posteriorsName):
-    pklProtocol = 2
-    pklFile = open(settings.clusters_path + posteriorsName, 'wb')
-    pickle.dump(posteriors, pklFile, protocol=pklProtocol)
+def get_clusters_sets(labeling_func, nb_bathces, nb_relations):
+    """Build cluster ID => set of examples classified/clustered.\n
+    Assigns class labels to the dataset split by maping cluster IDs (int) to sets of example indices (int)\n
+    :param labeling_func: label prediction function
+    :type labeling_func: callable
+    :param nb_bathces: number of batches: batch_size / dataset_size
+    :type nb_bathces: int
+    :param nb_relations: the number of clusters/semantic relations to induce
+    :type nb_relations: int
+    :return: the dictionary mapping cluster IDs int => sets with example indices int
+    :rtype: dict
+    """
+    clusters = {}
+    for i in xrange(nb_relations):
+        clusters[i] = set()
+    # clusters = dict(zip(xrange(self.relationNum), [set()] * self.relationNum))  in toy examples it works. In this system it does not!
+    predictions = (item for sublist in (labeling_func(i)[0] for i in xrange(nb_bathces)) for item in sublist)
+    for _, pred in enumerate(predictions):
+        clusters[pred].add(_)
+    return clusters
 
-def getClustersWithInfo(clusterSets, data, threshold):
+
+def get_clustered_freq(clusters, nb_relations):
+    clustFreq = {}
+    for i in xrange(nb_relations):
+        clustFreq[i] = {}
+    j = 0
+    for c in clusters:
+        for feat in clusters[c]:
+            if feat in clustFreq[j]:
+                clustFreq[j][feat] += 1
+            else:
+                clustFreq[j][feat] = 1
+        clustFreq[j] = sorted(clustFreq[j].iteritems(), key=operator.itemgetter(1), reverse=True)
+        j += 1
+    return clustFreq
+
+
+def get_clusters_with_info(clusterSets, data, threshold):
     for c in clusterSets:
         print c,
         if len(clusterSets[c]) < threshold:
@@ -362,7 +375,7 @@ def getClustersWithInfo(clusterSets, data, threshold):
         print ''
 
 
-def getClustersWithRelationLabels(clusterSets, data, evaluation, threshold):
+def get_clusters_with_relation_labels(clusterSets, data, evaluation, threshold):
     for c in clusterSets:
         print c,
         if len(clusterSets[c]) < threshold:
@@ -381,21 +394,19 @@ def getClustersWithRelationLabels(clusterSets, data, evaluation, threshold):
         print ''
 
 
-def save_model(a_model, name):
-    """
-    Pickles the input oie decoder
-    :param a_model: an oie trained decoder
-    :type a_model: ReconstructInducer
-    :param name: the input decoder name
-    :type name: str
-    """
-    with open(settings.models_path + name, 'wb') as pickled_file:
-        pickle.dump(a_model, pickled_file, protocol=pickle.HIGHEST_PROTOCOL)
+def pickle_clustering(clustering, clustering_name):
+    with open(settings.clusters_path + clustering_name, 'wb') as pklFile:
+        pickle.dump(clustering, pklFile, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def pickle_posteriors(posteriors, posteriors_name):
+    with open(settings.posteriors_path + posteriors_name, 'wb') as pklFile:
+        pickle.dump(posteriors, pklFile, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def load_model(name):
     """
-    Unpickles the oie decoder from the input file
+    Unpickles the oie decoder_type from the input file
     :param name: file containing pickled object, instance of ReconstructInducer
     :type name: str
     :return: the unpickled object
@@ -428,16 +439,6 @@ def load_data(pickled_dataset, rng, verbose=False):
     return indexedDataset, gold_standard
 
 
-def pickle_clustering(clustering, clustering_name):
-    with open(settings.clusters_path + clustering_name, 'wb') as pklFile:
-        pickle.dump(clustering, pklFile, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-def pickle_posteriors(posteriors, posteriors_name):
-    with open(settings.clusters_path + posteriors_name, 'wb') as pklFile:
-        pickle.dump(posteriors, pklFile, protocol=pickle.HIGHEST_PROTOCOL)
-
-
 def make_shared(matrix_dataset):
     """Converts the inner data structures of a DatasetSplit to the theano shared equivalents\n
     :param matrix_dataset: an instance of class learning.OieData.DatasetSplit
@@ -463,7 +464,7 @@ def fix_parsing(bool_flag):
 def get_command_args(program_name):
     parser = argparse.ArgumentParser(prog=program_name, description='Trains a basic Open Information Extraction Model', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--dataset', required=True, help='the pickled dataset file (produced by OiePreprocessor.py)')
-    parser.add_argument('--epochs', type=int, default=100, help='maximum number of epochs')
+    parser.add_argument('--epochs', type=int, default=100, help='maximum number of cur_epoch')
     parser.add_argument('--learning_rate', type=float, default=0.1, help='initial learning rate')
     parser.add_argument('--batch_size', type=int, default=50, help='size of the minibatches')
     parser.add_argument('--embed_size', type=int, default=30, help='embedding space dimensionality')
@@ -472,10 +473,10 @@ def get_command_args(program_name):
     parser.add_argument('--l1', metavar='lambda_1', type=float, default=0.0, help="value of the 'lambda' L1-norm regularization coefficient")
     parser.add_argument('--l2', metavar='lambda_2', type=float, default=0.0, help="value of the 'lambda' L2-norm regulatization coefficient")
     parser.add_argument('--optimizer', metavar='optimization_algorithm', type=str, default='adagrad', help="optimization algorithm one of {'sgd', 'adagrad'}")
-    parser.add_argument('--model_name', required=True, type=str, help='Name or ID of the decoder')
-    parser.add_argument('--decoder', metavar='decoder', type=str, required=True, help="decoder model; one of {'rescal', 'sp', 'rescal+sp'} for 'RESCAL' bilinear, 'Selectional Preferences', 'RESCAL + SP hybrid'")
+    parser.add_argument('--model_name', required=True, type=str, help='Name or ID of the decoder_type')
+    parser.add_argument('--decoder_type', metavar='decoder_type', type=str, required=True, help="decoder_type model; one of {'rescal', 'sp', 'rescal+sp'} for 'RESCAL' bilinear, 'Selectional Preferences', 'RESCAL + SP hybrid'")
     parser.add_argument('--ext_emb', action='store_true', default='False', help='external embeddings')
-    parser.add_argument('--ext_reg', action='store_true', default='True', help='regularize decoder model parameters as well')
+    parser.add_argument('--ext_reg', action='store_true', default='True', help='regularize decoder_type model parameters as well')
     parser.add_argument('--freq_eval', action='store_true', default='False', help='use frequent evaluation')
     parser.add_argument('--alpha', metavar='alpha_value', type=float, default=1.0, help='alpha coefficient for scaling the entropy term')
     parser.add_argument('--seed', metavar='seed_number', type=int, default=2, help='random seed')
@@ -491,16 +492,11 @@ def get_command_args(program_name):
 
 if __name__ == '__main__':
     print "Relation Learner"
-
     args = get_command_args(sys.argv[0].split('/')[-1])
-    print args
     rand = np.random.RandomState(seed=args.seed)
     indexedData, goldStandard = load_data(args.dataset, rand, verbose=True)
-
     inducer = ReconstructInducer(indexedData, goldStandard, rand, args.epochs, args.learning_rate, args.batch_size,
-                                 args.embed_size, args.relations, args.neg_samples, args.l1, args.l2, args.optimizer, args.model_name, args.decoder,
+                                 args.embed_size, args.relations, args.neg_samples, args.l1, args.l2, args.optimizer, args.model_name, args.decoder_type,
                                  args.ext_emb, args.ext_reg, args.freq_eval, args.alpha)
-    inducer.learn()
-    save_model(inducer, inducer.modelName)
-
-    # python learning/OieInduction.py --pickled_dataset sample.pk --model_name discrete-autoencoder --decoder AC --optimization 1 --epochs 10 --batch_size 100 --relations_number 10 --negative_samples_number 5 --l2_regularization 0.1 --alpha 0.1 --seed 2 --embed_size 10 --learning_rate 0.1
+    inducer.train()
+    inducer.save(inducer.modelName)

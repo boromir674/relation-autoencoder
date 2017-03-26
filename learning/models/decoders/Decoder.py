@@ -4,8 +4,10 @@ import abc
 class Decoder(object):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, rng, neg_samples_num, batch_size, embeddings_size, relation_num, entity_vocab_size, init_embds):
+    def __init__(self, model_type, rng, neg_samples_num, batch_size, embeddings_size, relation_num, entity_vocab_size, init_embds=None):
         """
+        :param model_type: the implemented model used in the decodeing unit
+        :type model_type: str {'rescal', 'sp', 'rescal+sp'}
         :param rng: a random number generator
         :type rng: numpy.random.RandomState
         :param neg_samples_num: number of samples to take per e1, e2 entity for the 'negative sampling approximation'
@@ -21,6 +23,7 @@ class Decoder(object):
         :param init_embds: initial array of entity embeddings, typical zeros unless word2vec vectors loaded
         :type init_embds: numpy.ndarray
         """
+        self.type = model_type
         self.rng = rng
         self.s = neg_samples_num
         self.l = batch_size
@@ -28,6 +31,19 @@ class Decoder(object):
         self.m = relation_num
         self.n = entity_vocab_size
         self.A_np = init_embds
+
+    @staticmethod
+    def creat_decoder_with_same_specs(a_decoder):
+        """Constructs a Decoder object initialized according to the input Decoder's specs. Initial embeddings are set to None\n
+        :param a_decoder: an instance object
+        :type a_decoder: Decoder
+        :return: a decoder_type initialized with the same specs as the input decoder_type
+        :rtype: Decoder
+        """
+        return construct_decoder(a_decoder.type, a_decoder.rng, a_decoder.s, a_decoder.l, a_decoder.r, a_decoder.m, a_decoder.n, init_embds=None)
+
+    def set_embeddings(self, initial_embeddings):
+        self.A_np = initial_embeddings
 
     @abc.abstractmethod
     def get_scores(self, args1, args2, relation_probs, neg1, neg2, entropy):
@@ -75,7 +91,7 @@ class Decoder(object):
         raise NotImplementedError
 
 
-def construct_decoder(model_type, rng, neg_samples_num, batch_size, embeddings_size, relation_num, entity_vocab_size, init_embds):
+def construct_decoder(model_type, rng, neg_samples_num, batch_size, embeddings_size, relation_num, entity_vocab_size, init_embds=None):
     if model_type == 'rescal':
         from Bilinear import Bilinear
         return Bilinear(rng, neg_samples_num, batch_size, embeddings_size, relation_num, entity_vocab_size, init_embds)

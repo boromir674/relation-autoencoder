@@ -19,13 +19,14 @@ class Visualizator(object):
         :param goldstandard: the goldstandard relation labels: a dict that maps splits ('train', 'test', 'valid') to dictionaries (int => list) that encode example-to-label mappings [int => list of tokens (strings)]
         :type goldstandard: dict
         """
-        extractor = Visualizator._get_trigger_extractor(dataset_manager, split)
-        if goldstandard is not None:
+        if goldstandard is None:
+            extractor = Visualizator._get_trigger_extractor(dataset_manager, split)
+        else:
             extractor = Visualizator._get_label_extractor(goldstandard, split)
         for cl_id, cl_members in cluster_sets.items():
             print cl_id,
-            trig_or_labels = [extractor(_) for _ in cl_members]
-            frequencies = Counter([_ for _ in trig_or_labels if _ is not None])
+            trig_or_labels = [extractor(idx) for idx in cl_members]
+            frequencies = Counter([idx for idx in trig_or_labels if idx is not None])
             Visualizator.print_clustered_triggers(frequencies, threshold)
 
     @staticmethod
@@ -45,21 +46,17 @@ class Visualizator(object):
 
     @staticmethod
     def _get_trigger_extractor(dataset_manager, split):
-        if split == 'train':
-            return Visualizator._get_trigger(dataset_manager.get_example_feature)
-        elif split == 'valid':
-            return Visualizator._get_trigger(dataset_manager.get_example_feature_valid)
-        elif split == 'test':
-            return Visualizator._get_trigger(dataset_manager.get_example_feature_test)
-        return None
+
+        # return lambda x: Visualizator._get_trigger(dataset_manager.get_example_feature())
+        return Visualizator._get_trigger(split, dataset_manager.get_example_feature)
 
     @staticmethod
     def _get_label_extractor(goldstandard, split):
         return lambda x: goldstandard[split][x][0]
 
     @staticmethod
-    def _get_trigger(extractor):
-        return lambda x: Visualizator._remove_trigger_token(extractor(x, 'trigger'))
+    def _get_trigger(split, extractor):
+        return lambda x: Visualizator._remove_trigger_token(extractor(x, split, 'trigger'))
 
     @staticmethod
     def _remove_trigger_token(trigger):

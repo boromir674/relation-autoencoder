@@ -3,12 +3,12 @@ import theano
 import numpy as np
 import theano.tensor as T
 from Decoder import Decoder
+model_type = 'sp'
 
 
 class SelectionalPreferences(Decoder):
-
-    def __init__(self, rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb):
-        super(SelectionalPreferences, self).__init__(rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb)
+    def __init__(self, rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb=None):
+        super(SelectionalPreferences, self).__init__(model_type, rng, neg_samples_num, batch_size, embedSize, relationNum, argVocSize, ex_emb)
         # Selectional Preferences of arguments/entities 1 and 2
         Ca1NP = np.asarray(rng.normal(0, math.sqrt(0.1), size=(self.r, self.m)), dtype=theano.config.floatX)  # [ c_{11}, c_{12}, c_{13}, ..., c_{1m} ]
         Ca2NP = np.asarray(rng.normal(0, math.sqrt(0.1), size=(self.r, self.m)), dtype=theano.config.floatX)  # [ c_{21}, c_{22}, c_{23}, ..., c_{2m} ]

@@ -1,6 +1,3 @@
-__author__ = 'diego'
-
-
 class OieExample (object):
     """
     This is the basic wrapper class around a sentence datapoint. It holds information about features as numerical IDs and

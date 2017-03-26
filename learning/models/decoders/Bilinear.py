@@ -4,14 +4,13 @@ import numpy as np
 from math import sqrt
 import theano.tensor as T
 
-__author__ = 'enfry'
+model_type = 'rescal'
 
 
 class Bilinear(Decoder):
-    """An inmplementation of the RESCAL _factorization decoder"""
-
-    def __init__(self, rng, neg_samples_num, batch_size, r, m, n, A_np):
-        super(Bilinear, self).__init__(rng, neg_samples_num, batch_size, r, m, n, A_np)
+    """An inmplementation of the RESCAL _factorization decoder_type"""
+    def __init__(self, rng, neg_samples_num, batch_size, r, m, n, A_np=None):
+        super(Bilinear, self).__init__(model_type, rng, neg_samples_num, batch_size, r, m, n, A_np)
         RNP = np.asarray(rng.normal(0, sqrt(0.1), size=(r, r, m)), dtype=theano.config.floatX)
         self.R = theano.shared(value=RNP, name='R')  # (r,r,m)
         self.A = theano.shared(value=A_np, name='A')  # (n,r)

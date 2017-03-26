@@ -1,4 +1,5 @@
 import theano
+import settings
 import numpy as np
 import scipy.sparse as sp
 from collections import Counter
@@ -20,6 +21,9 @@ class DatasetSplit(object):
         self.args1 = arguments1  # (l) (number_of_examples)
         self.args2 = arguments2  # (l) (number_of_examples)
         self.xFeats = arg_features  # (l, h) (number_of_examples x number_of_features_passing_threshold])
+
+    def get_size(self):
+        return len(self.args1)
 
 
 class DatasetManager(object):
@@ -53,19 +57,19 @@ class DatasetManager(object):
         norm1 = float(sum((_ for _ in self._generate_frequencies(entity_freqs))))
         self.negSamplingDistr = map(lambda x: x / norm1, (_ for _ in self._generate_frequencies(entity_freqs)))
         self.negSamplingCum = np.cumsum(self.negSamplingDistr)  # cumulative distribution (array)
-        self.split['train'] = self._wrap_examples(oie_dataset, 'train')
+        self.split['train'] = self._produce_dataset_split(oie_dataset, 'train')
         if verbose:
             print "  initialized 'train' split with {} number of examples".format(len(self.split['train'].args1))
         if 'valid' in oie_dataset:
-            self.split['valid'] = self._wrap_examples(oie_dataset, 'valid')
+            self.split['valid'] = self._produce_dataset_split(oie_dataset, 'valid')
             if verbose:
                 print "  initialized 'valid' split with {} number of examples".format(len(self.split['valid'].args1))
         if 'test' in oie_dataset:
-            self.split['test'] = self._wrap_examples(oie_dataset, 'test')
+            self.split['test'] = self._produce_dataset_split(oie_dataset, 'test')
             if verbose:
                 print "  initialized 'test' split with {} number of examples".format(len(self.split['test'].args1))
 
-    def _wrap_examples(self, oie_examples, split):
+    def _produce_dataset_split(self, oie_examples, split):
         """
         Returns a data structure (DatasetManager) with arrays of the entities e1, e2 IDs for the input split examples, the feature triggering binary sparse array and arrays for e1, e2 with samples taken from the entities powered frequencies distribution.
         :param oie_examples: a list of instances of OieExample serving as the split under consideration
@@ -93,26 +97,10 @@ class DatasetManager(object):
         """Returns the number of unique featues extracted from the whole dataset"""
         return self.featureLex.get_feature_space_dimensionality()
 
-    def get_example_feature(self, an_id, feature):
+    def get_example_feature(self, an_id, a_split, feature):
         """Returns the feature string (i.e. 'posPatternPath#POS_CD_NN_IN_DT') for the input example's ID (which is in the 'train' split), matching the input feature function string (i.e. 'posPatternPath'). Returns None if not found."""
-        for e in self.split['train'].xFeats[an_id].nonzero()[1]:  # iterate through the indices of the features triggering of the examples in the 'train' split
+        for e in self.split[a_split].xFeats[an_id].nonzero()[1]:  # iterate through the indices of the features triggering of the examples in the 'train' split
             feat = self.featureLex.get_str_pruned(e)  # get feature string (i.e. 'arg1_lower#java'), if has passed thresholding
-            if self.featureLex.get_str_pruned(e).find(feature) > -1:
-                return feat
-        return None
-
-    def get_example_feature_valid(self, an_id, feature):
-        """Returns the feature string (i.e. 'lexicalPattern#production_for') for the input example's ID (which is in the 'valid' split), matching the input feature function string (i.e. 'lexicalPattern'). Returns None if not found."""
-        for e in self.split['valid'].xFeats[an_id].nonzero()[1]:
-            feat = self.featureLex.get_str_pruned(e)
-            if self.featureLex.get_str_pruned(e).find(feature) > -1:
-                return feat
-        return None
-
-    def get_example_feature_test(self, an_id, feature):
-        """Returns the feature string (i.e. "bow_clean#['george', 'balanchine', 'production', 'new', 'york', 'city', 'ballet']") for the input example's ID (which is in the 'test' split), matching the input feature function string (i.e. 'bow_clean'. Returns None if not found."""
-        for e in self.split['test'].xFeats[an_id].nonzero()[1]:
-            feat = self.featureLex.get_str_pruned(e)
             if self.featureLex.get_str_pruned(e).find(feature) > -1:
                 return feat
         return None
@@ -130,7 +118,7 @@ class DatasetManager(object):
             yield frequencies[self.id2Arg[id_x]] ** self.negSamplingDistrPower
 
     def generate_split_keys(self):
-        for _ in ('train', 'valid', 'test'):
+        for _ in settings.split_labels:
             if _ in self.split:
                 yield _
 
