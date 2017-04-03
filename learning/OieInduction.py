@@ -2,13 +2,13 @@ import os
 import sys
 import time
 import theano
+import settings
 import argparse
 import operator
 import numpy as np
 import theano.sparse
 import cPickle as pickle
 import theano.tensor as T
-import settings as settings
 from collections import Counter
 from learning.OieData import DatasetSplit
 from learning.OieData import DatasetManager
@@ -417,12 +417,13 @@ def load_data(pickled_dataset, rng, verbose=False):
     :return: a tuple of the indexed dataset and the goldstandard
     :rtype: learning.OieData.DatasetManager, dict
     """
-    if not os.path.exists(pickled_dataset):
-        print "Pickled dataset not found"
-        sys.exit()
+    full_path = settings.root_dir + '/' + pickled_dataset
+    if not os.path.exists(full_path):
+        print >> sys.stderr, "Pickled '{}' dataset not found".format(full_path)
+        sys.exit(1)
     if verbose:
         print 'Loading data'
-    feature_extractions, relation_lexicon, data, gold_standard = unpickle_objects(pickled_dataset)
+    feature_extractions, relation_lexicon, data, gold_standard = unpickle_objects(full_path)
     indexedDataset = DatasetManager(data, relation_lexicon, rng, verbose=verbose)
     return indexedDataset, gold_standard
 

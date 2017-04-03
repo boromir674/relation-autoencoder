@@ -1,8 +1,11 @@
-__author__ = 'diego'
+import os
+
+root_dir = os.path.dirname(os.path.realpath(__file__))
 
 models_path = ''
-clusters_path = ''
-
+clusters_path = root_dir + '/train_products/'
+posteriors_path = root_dir + '/train_products/'
+retreival_metrics = root_dir + '/train_products/'
 lda_pairs_path = ''
 relations2IdDictionary = ''
 
