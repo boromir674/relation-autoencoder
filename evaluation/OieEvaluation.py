@@ -17,7 +17,6 @@ class SingleLabelClusterEvaluation:
         assert split_label == settings.split_labels[0] or split_label == settings.split_labels[1] or split_label == settings.split_labels[2]
         self.split_label = split_label
         self.numberOfElements = 0
-        self.epoch = 0
         self.induced_clusters = {}
         self.gold_clusters, self.assessableElemSet = SingleLabelClusterEvaluation._parse_first_relation_label(split_goldstandard)
 
@@ -34,19 +33,8 @@ class SingleLabelClusterEvaluation:
                 self.numberOfElements += len(example_set)
                 self.induced_clusters[cluster_id] = set(example_set)
 
-    def print_epoch_metrics(self, store=False):
-        """Prints f1, precision and recall scores.\n
-        :param store: if True stores the metrics for each epoch in a file for plotting purposes
-        :type store: bool
-        """
-        self.epoch += 1
-        F1B3, precB3, recB3 = self.get_epoch_metrics()
-        print '{} f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(self.split_label, F1B3, precB3, recB3)  # validOrTrain, 'f1:', F1B3, 'pre:', precB3, 'rec:', recB3
-        if store:
-            with open(settings.retreival_metrics + '/' + self.split_label, 'a+') as f:
-                f.write('{} {:.4f} {:.4f} {:.4f}\n'.format(self.epoch, F1B3, precB3, recB3))
-
-    def get_epoch_metrics(self):
+    def compute_metrics(self):
+        """Compute f1, precision and recall scores.\n"""
         recB3 = self.b3_total_element_recall()
         precB3 = self.b3_total_element_precision()
         if recB3 == 0.0 and precB3 == 0.0:
