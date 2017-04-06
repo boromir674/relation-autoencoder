@@ -190,7 +190,7 @@ class ReconstructInducer(object):
                     elif self._mode() == 2:
                         print batch_ind * self.batch_size, batch_ind, '############################################################'
                         for split in settings.split_labels[1:]:
-                            self.cluster[split] = self.get_clusters_sets(self.func['label_'+split], self.batch_reps[split])
+                            self.cluster[split] = get_clusters_sets(self.func['label_'+split], self.batch_reps[split])
                             self._evaluate(split, print_clusters=False, store=False)
 
             self.train_products.feed_train_error(err)

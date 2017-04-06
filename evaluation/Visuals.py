@@ -46,8 +46,6 @@ class Visualizator(object):
 
     @staticmethod
     def _get_trigger_extractor(dataset_manager, split):
-
-        # return lambda x: Visualizator._get_trigger(dataset_manager.get_example_feature())
         return Visualizator._get_trigger(split, dataset_manager.get_example_feature)
 
     @staticmethod

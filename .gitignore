@@ -4,3 +4,5 @@ __pycache__/
 *.json*
 *.pyc
 *init__*
+train_products*
+definitions/__init__.py

@@ -1,10 +1,8 @@
 import numpy as np
+import settings as s
+from evaluation.plot import *
 
 metrics = ['f1', 'pre', 'rec']
-
-
-def get_evaluation_splits():
-    return ['train', 'valid', 'test']
 
 
 class TrainProductsLoader:
@@ -12,9 +10,9 @@ class TrainProductsLoader:
     def __init__(self, capacity):
         self.capacity = capacity
         self.train_error_series = np.empty(capacity)
-        self.metrics = dict(zip(get_evaluation_splits(), [dict(zip(metrics, [np.empty(capacity)] * len(metrics)))] * len(get_evaluation_splits())))
+        self.metrics = dict(zip(s.split_labels, [dict(zip(metrics, [np.empty(capacity)] * len(metrics)))] * len(s.split_labels)))
         self.ind1 = 0
-        self.ind2 = dict(zip(get_evaluation_splits(), [0] * len(get_evaluation_splits())))
+        self.ind2 = dict(zip(s.split_labels, [0] * len(s.split_labels)))
 
     def feed_train_error(self, epoch_error):
         assert self.ind1 < self.capacity, "Tried to record train error at iteration '{}', but maximum storing capacity is {}".format(self.ind1, self.capacity)
@@ -28,6 +26,10 @@ class TrainProductsLoader:
         for i, metric in enumerate(metrics):
             self.metrics[split][metric][self.ind2[split]] = metrics_scores[i]
         self.ind2[split] += 1
+
+    def create_train_error_figure(self):
+        fig = create_figure([Plot([self.train_error_series], labels=[None], x_label='epoch', y_label='error')], 'Error evolution')
+        fig.savefig('test_fig')
 
 if __name__ == '__main__':
     pr = TrainProductsLoader(4)
