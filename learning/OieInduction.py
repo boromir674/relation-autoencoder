@@ -14,6 +14,7 @@ from evaluation.OieEvaluation import *
 from learning.OieData import DatasetSplit
 from learning.OieData import DatasetManager
 from learning.models.decoders.Decoder import *
+from definitions.products import TrainProductsLoader
 from learning.OieModel import OieModelFunctions
 from processing.OiePreprocessor import FeatureLexicon
 from evaluation.Visuals import Visualizator as printer
@@ -96,6 +97,7 @@ class ReconstructInducer(object):
         for split in self.data.generate_split_keys():
             self.batch_reps[split] = self.data.split[split].args1.shape[0] / self.batch_size
         self.cluster = dict(zip(s.split_labels, [None] * len(s.split_labels)))
+        self.train_products = None
 
     def initialize(self):
         # self.modelFunc.relationClassifiers = IndependentRelationClassifiers(self.rng, self.data.get_dimensionality(), self.relationNum)
@@ -138,7 +140,7 @@ class ReconstructInducer(object):
 
         train_split = make_shared(self.data.split['train'])
 
-        print '  Compiling train function'
+        print '  compiling train function'
         # takes as input an index to the starting point of a mini-batch, and two vectors of the same length as mini-batch.
         # the vectors hold indices to the entities sampled for the 'negative sampling' approximation of the posterior
 
@@ -155,8 +157,8 @@ class ReconstructInducer(object):
 
     def train(self):
         startTime = time.clock()
-        f = self._check_for_compiled_functions()
-        if not f:
+        self.train_products = TrainProductsLoader(self.nb_epochs)
+        if not self._check_for_compiled_functions():
             self.compile_function()
         self.learn(debug=False)
         train_duration = time.clock() - startTime
@@ -191,6 +193,7 @@ class ReconstructInducer(object):
                             self.cluster[split] = self.get_clusters_sets(self.func['label_'+split], self.batch_reps[split])
                             self._evaluate(split, print_clusters=False, store=False)
 
+            self.train_products.feed_train_error(err)
             epochEndTime = time.clock()
             print 'Training error: {:.4f}'.format(err)
             print 'Epoch duration: {:.1f}s'.format(epochEndTime - epochStartTime)
@@ -213,10 +216,13 @@ class ReconstructInducer(object):
 
     def _evaluate(self, split, print_clusters=True, store=False):
         self.evaluator[split].feed_induced_clusters(self.cluster[split])
-        self.evaluator[split].print_epoch_metrics(store=store)
+        f1, pre, rec = self.evaluator[split].compute_metrics()
+        print '{} f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(split, f1, pre, rec)
         if print_clusters:
             printer.print_clusters(self.cluster[split], self.data, split, settings.elems_to_visualize)
-        
+        if store:
+            self.train_products.feed_epoch_metrics(split, [f1, pre, rec])
+
     def _perform_debug_actions(self, split):
         pickle_clustering(self.cluster[split], self.modelID + '_epoch' + str(self.cur_epoch) + '_' + split)
         if self.cur_epoch % 5 == 0 and self.cur_epoch > 0:
