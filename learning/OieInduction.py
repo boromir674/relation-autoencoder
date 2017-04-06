@@ -163,10 +163,7 @@ class ReconstructInducer(object):
         print >> sys.stderr, 'Training completed in {:.1f}s'.format(train_duration)
         print 'Trained for {} epochs. Avg epoch duration: {:.1f}s'.format(self.cur_epoch, train_duration / float(self.cur_epoch))
 
-    def learn(self, debug=False):
-        # functions = [self.func['train'], self.func['label_train'], self.func['label_valid'], self.func['label_test']]
-        # compute number of minibatches for train, validation and test sets
-
+    def learn(self, debug=True):
         print 'Training model on {} examples'.format(self.data.split['train'].get_size())
         doneLooping = False
         epoch = 0
@@ -191,9 +188,8 @@ class ReconstructInducer(object):
                     elif self._mode() == 2:
                         print batch_ind * self.batch_size, batch_ind, '############################################################'
                         for split in settings.split_labels[1:]:
-                            cluster = self.get_clusters_sets(self.func['label_'+split], self.batch_reps[split])
-                            self.evaluator[split].feed_induced_clusters(cluster)
-                            self.evaluator[split].print_epoch_metrics(store=False)
+                            self.cluster[split] = self.get_clusters_sets(self.func['label_'+split], self.batch_reps[split])
+                            self._evaluate(split, print_clusters=False, store=False)
 
             epochEndTime = time.clock()
             print 'Training error: {:.4f}'.format(err)
@@ -207,21 +203,13 @@ class ReconstructInducer(object):
                 else:
                     self._evaluate('train', store=True)
                 if debug:
-                    # pickle_clustering(trainClusters, self.modelID+'_epoch'+str(epoch))
-                    # if epoch % 5 == 0 and epoch > 0:
-                    #     trainPosteriors = OieInduction.compute_posteriors(self.func['label_train'], self.batch_reps['train'])
-                    #     pickle_posteriors(trainPosteriors, self.modelID+'_Posteriors_epoch'+str(epoch))
                     self._perform_debug_actions('train')
             if self._mode() == 2:
-                self.cluster['valid'] = get_clusters_sets(self.func['label_valid'], self.batch_reps['valid'], self.relationNum)
-                self._evaluate('valid', store=True)
-                if debug:
-                    self._perform_debug_actions('valid')
-
-                self.cluster['test'] = get_clusters_sets(self.func['label_test'], self.batch_reps['test'], self.relationNum)
-                self._evaluate('test', store=True)
-                if debug:
-                    self._perform_debug_actions('test')
+                for split in s.split_labels[1:]:
+                    self.cluster[split] = get_clusters_sets(self.func['label_'+split], self.batch_reps[split], self.relationNum)
+                    self._evaluate(split, store=True)
+                    if debug:
+                        self._perform_debug_actions(split)
 
     def _evaluate(self, split, print_clusters=True, store=False):
         self.evaluator[split].feed_induced_clusters(self.cluster[split])
