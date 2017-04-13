@@ -6,3 +6,4 @@ __pycache__/
 *init__*
 train_products*
 definitions/__init__.py
+*.png

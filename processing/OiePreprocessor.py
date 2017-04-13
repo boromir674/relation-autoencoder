@@ -126,12 +126,12 @@ def get_features(lexicon, feature_extractors, info, arg1=None, arg2=None, expand
         entityTypes, arg1_lower, arg2_lower, bow_clean, entity1Type, entity2Type, lexicalPattern, posPatternPath]
     :param info: a list containing information of the input datapoint\n
         Example\n
-        parsing  : l[0] = '<-poss<-production->prep->for->pobj->'\n
-        entities : l[1] = 'JOBTITLE-JOBTITLE'\n
-        trig     : l[2] = 'TRIGGER:review|performance'\n
-        sentence : l[3] = 'Supervised learning us a subset of learning methods'\n
-        pos      : l[4] = 'DT NNP NNP , VBD IN DT NNP JJ NN NN NNP , VBZ JJ NN NN IN CD NNS IN DT NN NN IN DT NN .'\n
-        docPath  : l[5] = './2000/01/01/1165031.xml'
+        parsing  : info[0] = '<-poss<-production->prep->for->pobj->'\n
+        entities : info[1] = 'JOBTITLE-JOBTITLE'\n
+        trig     : info[2] = 'TRIGGER:review|performance'\n
+        sentence : info[3] = 'Supervised learning us a subset of learning methods'\n
+        pos      : info[4] = 'DT NNP NNP , VBD IN DT NNP JJ NN NN NNP , VBZ JJ NN NN IN CD NNS IN DT NN NN IN DT NN .'\n
+        docPath  : info[5] = './2000/01/01/1165031.xml'
     :param arg1: entity1 string, eg 'Java'
     :param arg2: entity2 string, eg 'C++'
     :type expand: Boolean flag controlling whether str2Id, id2Str and id2freq dictionaries should be expanded as new
@@ -268,12 +268,12 @@ def load_features(raw_features_struct, lexicon, examples_list, labels_dict, thre
     :type examples_list: list
     :param labels_dict: the dictionary to update the values with the read relation labels_dict (encoded as a list of tokens).
     :type labels_dict: dict example ID (int) => goldstandard label (list of tokens/strings)
-    :param threshold: feature has to found at least 'threshold' number of times
+    :param threshold: feature has to be found at least 'threshold' number of times
     :type threshold: int
     """
     index = 0
     for i, feats in enumerate(raw_features_struct):  # a list of lists of strings [[0, f1, f2, .., f9], [1, ..], .., [N, ..]]
-        if i % 1000 == 0:
+        if i % 100000 == 0:
             print i,
         feat_ids = get_thresholded_features(lexicon, feat_extractors,
                                             [feats[1], feats[4], feats[5], feats[7], feats[8], feats[6]], feats[2], feats[3], expand=True,
