@@ -6,8 +6,14 @@ models_path = root_dir + '/train_products/'
 clusters_path = root_dir + '/train_products/'
 posteriors_path = root_dir + '/train_products/'
 retreival_metrics = root_dir + '/train_products/'
+plots_path = root_dir + '/train_products/'
+
+# directory in which pickled files are located for unit testing purposes
+test_dir = '/Data/thesis/data/'
+
 lda_pairs_path = ''
 relations2IdDictionary = ''
+
 
 external_embeddings_path = ''
 debug = True

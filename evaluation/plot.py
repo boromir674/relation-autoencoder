@@ -31,6 +31,7 @@ def parse_data_series(a_file, columns):
                 data_series[i].append(line.split(' ')[col-1])
     return data_series
 
+
 def create_single_plot_figure_from_file(a_file, columns, labels, title, x_label, y_label, save_name='fig'):
     series = parse_data_series(a_file, columns)
     my_plot = Plot(series, labels, x_label, y_label)
@@ -38,15 +39,15 @@ def create_single_plot_figure_from_file(a_file, columns, labels, title, x_label,
     fig.savefig(save_name)
 
 
-def create_figure(plots, title, grid=(1, 1)):
+def create_figure(plots, a_title, grid=(1, 1)):
     """
     Creates a Figure object with subplots according to the given Plots. Each Plot instance can contain time series for one or more variables\n
     :param plots: each object is used to construct a subplot
     :type plots: list
     :param grid: the formation of the grid where the subplots lie
     :type grid: tuple
-    :param title: the title to be given to the Figure
-    :type title: str
+    :param a_title: the title to be given to the Figure
+    :type a_title: str
     :return: the Figure object
     :rtype: matplotlib.figure.Figure
     """
@@ -67,7 +68,7 @@ def create_figure(plots, title, grid=(1, 1)):
                 line.set_label(var_label)
             if len(plots[i+j].labels) != 1 or plots[i+j].labels[0] is not None:
                 ax.legend()
-    fig.suptitle(title, fontsize=12)
+    fig.suptitle(a_title, fontsize=12)
     return fig
 
 

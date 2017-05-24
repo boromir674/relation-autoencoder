@@ -112,9 +112,10 @@ class FeatureLexicon:
 
 def build_feature_lexicon(raw_features, feature_extractors, lexicon):
     # invokes internally get_or_add building the str2Id, id2Str, id2freq dicts since expand parameter is True
+    print 'Building feature lexicon...'
     for ex_f in raw_features:
         get_features(lexicon, feature_extractors, [ex_f[1], ex_f[4], ex_f[5], ex_f[7], ex_f[8], ex_f[6]], ex_f[2], ex_f[3], expand=True)
-    print 'Unique features keys: {}'.format(lexicon.nextId)
+    print '  Lexicon now has {} unique entries'.format(lexicon.nextId)
 
 
 def get_features(lexicon, feature_extractors, info, arg1=None, arg2=None, expand=False):
@@ -220,7 +221,7 @@ def read_examples(file_name):
     :rtype: list
     """
     start = time.time()
-    print 'Reading examples (from tab separated file)'
+    print 'Reading examples from tab separated file...'
     count = 0
     i = 0
     with open(file_name, 'r') as fp:
@@ -234,9 +235,9 @@ def read_examples(file_name):
                 assert len(fields) == 9, "a problem with the file format (# fields is wrong) len is " + str(len(fields)) + "instead of 9"
                 relation_examples.append([str(count)] + fields)
                 count += 1
-    print 'file contained {} lines'.format(i)
-    print 'lines representing valid example features: {}'.format(count - 1)
-    print 'Done in {} sec'.format(time.time() - start)
+    print '  File contained {} lines'.format(i + 1)
+    print '  Datapoints with valid features encoded: {}'.format(count)
+    print '  Done in {:.2f} sec'.format(time.time() - start)
     return relation_examples
 
 
@@ -271,10 +272,10 @@ def load_features(raw_features_struct, lexicon, examples_list, labels_dict, thre
     :param threshold: feature has to be found at least 'threshold' number of times
     :type threshold: int
     """
+    start = time.clock()
+    print "Creating training examples and putting into list structure..."
     index = 0
     for i, feats in enumerate(raw_features_struct):  # a list of lists of strings [[0, f1, f2, .., f9], [1, ..], .., [N, ..]]
-        if i % 100000 == 0:
-            print i,
         feat_ids = get_thresholded_features(lexicon, feat_extractors,
                                             [feats[1], feats[4], feats[5], feats[7], feats[8], feats[6]], feats[2], feats[3], expand=True,
                                             threshold=threshold)
@@ -282,7 +283,8 @@ def load_features(raw_features_struct, lexicon, examples_list, labels_dict, thre
         labels_dict[index] = feats[-1].strip().split(' ')
         index += 1
         examples_list.append(example)
-    print '\nUnique thresholded feature keys: {}'.format(lexicon.nextIdPruned)
+    print '  Unique thresholded feature keys: {}'.format(lexicon.nextIdPruned)
+    print '  Done in {:.1f} sec'.format(time.clock() - start)
 
 
 def pickle_objects(feat_extrs, feat_lex, dataset_splits, goldstandard_splits, a_file):
@@ -316,7 +318,7 @@ def pickle_objects(feat_extrs, feat_lex, dataset_splits, goldstandard_splits, a_
         pickle.dump(feat_lex, pkl_file, protocol=pickle.HIGHEST_PROTOCOL)
         pickle.dump(dataset_splits, pkl_file, protocol=pickle.HIGHEST_PROTOCOL)
         pickle.dump(goldstandard_splits, pkl_file, protocol=pickle.HIGHEST_PROTOCOL)
-    print 'Done in {} sec'.format(time.time() - start)
+    print '  Done in {:.2f} sec'.format(time.time() - start)
 
 
 def unpickle_objects(a_file, verbose=False, debug=False):
@@ -358,7 +360,7 @@ def unpickle_objects(a_file, verbose=False, debug=False):
     if verbose:
         print '  loaded feature extractors:', ', '.join(("'" + str(_.__name__) + "'" for _ in feature_extraction_functions))
         print '  loaded dataset with {} splits'.format(', '.join(("'" + _ + "'" for _ in the_dataset.iterkeys())))
-        print 'Done in {} sec'.format(time.time() - start)
+        print 'Done in {:.2f} sec'.format(time.time() - start)
     return feature_extraction_functions, the_relation_lexicon, the_dataset, the_goldstandard
 
 
@@ -373,15 +375,13 @@ def get_cmd_arguments():
 
 
 if __name__ == '__main__':
+    t_start = time.time()
     args = get_cmd_arguments()
-    print "Parsed params: " + str(args)
 
     # reads the tabbed separated file into a list of lists of strings, representing extracted features
     exs_raw_features = read_examples(args.input_file)
 
-    print "Using rich features"
     feat_extractors = OieFeatures.getBasicCleanFeatures()  # list of callable feature extraction functions
-
     relation_lexicon = FeatureLexicon()
     dataset = {}  # dict mapping keys 'train', 'test', 'dev' to a list of OieExample instances
 
@@ -389,11 +389,9 @@ if __name__ == '__main__':
     # each inner list contains the tokens that comprise the label (i.e. ['is-a']). Most are expected to have a single token.
     goldstandard = {}
 
-    if os.path.exists(args.pickled_dataset):  # if found pickled objects
+    if os.path.exists(args.pickled_dataset):  # if found pickled objects, else pickle into new file
         feat_extractors, relation_lexicon, dataset, goldstandard = unpickle_objects(args.pickled_dataset)
 
-    t_start = time.time()
-    print "Processing relation Examples"
     examples = []  # list of instances of definitions.OieExample
     relation_labels = {}  # dictionary mapping int to list of strings
 
@@ -413,5 +411,4 @@ if __name__ == '__main__':
     # update the dataset split and goldstandard mappings with the thresholded extractions
     load_features(exs_raw_features, relation_lexicon, examples, relation_labels, args.thres)
 
-    print 'Done in {} sec, processed {} examples'.format(time.time() - t_start, len(examples))
     pickle_objects(feat_extractors, relation_lexicon, dataset, goldstandard, args.pickled_dataset)

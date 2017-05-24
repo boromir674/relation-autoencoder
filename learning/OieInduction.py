@@ -98,6 +98,7 @@ class ReconstructInducer(object):
             self.batch_reps[split] = self.data.split[split].args1.shape[0] / self.batch_size
         self.cluster = dict(zip(s.split_labels, [None] * len(s.split_labels)))
         self.train_products = None
+        self.plot_flag = True
 
     def initialize(self):
         # self.modelFunc.relationClassifiers = IndependentRelationClassifiers(self.rng, self.data.get_dimensionality(), self.relationNum)
@@ -106,14 +107,12 @@ class ReconstructInducer(object):
         #                                            self.embedSize, self.relationNum, self.data.get_arg_voc_size(), init_embds=embds)
         self.modelFunc = OieModelFunctions(self.rng, self.embedSize, self.relationNum, self.neg_sample_num, self.batch_size, self.decoder_type, self.data, self.extendedReg, self.alpha, external_embeddings=self.extEmb)
 
-    def save(self, file_name):
-        """Saves OieInduction instantiated object in a file with the given name\n.
-        Discards any compiled functions (train and labeling functions) and then pickles the object in the given file\n
-        :param file_name: the name of the file to pickle the object to
-        :type file_name: str
+    def save(self):
+        """Saves the OieInduction instantiated object in a file with the given name in the directory specifiend in settings\n.
+        Discards any compiled functions (train and labeling functions) and then pickles the object\n
         """
-        self.func = {}  # dict(zip(['train']+['label_'+split for split in settings.split_labels], [None]*4))
-        with open(settings.models_path + file_name, 'wb') as f:
+        self.func = {}
+        with open(settings.models_path + '/' + self.modelName, 'wb') as f:
             pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     def compile_function(self):
@@ -156,12 +155,17 @@ class ReconstructInducer(object):
                 xFeats: make_shared(self.data.split[key]).xFeats[batch_index * self.batch_size:(batch_index + 1) * self.batch_size]})
 
     def train(self):
-        startTime = time.clock()
         self.train_products = TrainProductsLoader(self.nb_epochs)
+        startTime = time.clock()
         if not self._check_for_compiled_functions():
             self.compile_function()
+        compile_duration = time.clock() - startTime
+        startTime = time.clock()
         self.learn(debug=False)
         train_duration = time.clock() - startTime
+        if self.plot_flag:
+            self.train_products.create_train_error_figure(self.modelName)
+        print >> sys.stderr, 'Compiling completed in {:.1f}s'.format(compile_duration)
         print >> sys.stderr, 'Training completed in {:.1f}s'.format(train_duration)
         print 'Trained for {} epochs. Avg epoch duration: {:.1f}s'.format(self.cur_epoch, train_duration / float(self.cur_epoch))
 
@@ -224,10 +228,10 @@ class ReconstructInducer(object):
             self.train_products.feed_epoch_metrics(split, [f1, pre, rec])
 
     def _perform_debug_actions(self, split):
-        pickle_clustering(self.cluster[split], self.modelID + '_epoch' + str(self.cur_epoch) + '_' + split)
+        pickle_clustering(self.cluster[split], 'clusters_' + self.modelID + '_epoch_' + str(self.cur_epoch) + '_' + split)
         if self.cur_epoch % 5 == 0 and self.cur_epoch > 0:
             posteriors = OieInduction.compute_posteriors(self.func['label_'+split], self.batch_reps[split])
-            pickle_posteriors(posteriors, self.modelID + '_Posteriors_epoch' + str(self.cur_epoch) + '_test')
+            pickle_posteriors(posteriors, 'posteriors_' + self.modelID + '_epoch_' + str(self.cur_epoch) + '_' + split)
 
     @staticmethod
     def compute_posteriors(labeling_func, batch_reps):
@@ -413,7 +417,7 @@ def load_model(name):
 def load_data(pickled_dataset, rng, verbose=False):
     """Load from pickled file and index dataset\n
     Unpickles feature extraction functions, Feature Lexicon, dataset batch and goldstanrd batch the file specified in the cmd arguments and wraps them around a DatasetManager\n
-    :param pickled_dataset: the file holding the pickled FeatureLexicon object
+    :param pickled_dataset: the path of file holding the pickled FeatureLexicon object
     :type pickled_dataset: str
     :type rng: numpy.random.RandomState
     :param rng: a random number generator from various distributions
@@ -422,13 +426,12 @@ def load_data(pickled_dataset, rng, verbose=False):
     :return: a tuple of the indexed dataset and the goldstandard
     :rtype: learning.OieData.DatasetManager, dict
     """
-    full_path = settings.root_dir + '/' + pickled_dataset
-    if not os.path.exists(full_path):
-        print >> sys.stderr, "Pickled '{}' dataset not found".format(full_path)
+    if not os.path.exists(pickled_dataset):
+        print >> sys.stderr, "Pickled '{}' dataset not found".format(pickled_dataset)
         sys.exit(1)
     if verbose:
-        print 'Loading data'
-    feature_extractions, relation_lexicon, data, gold_standard = unpickle_objects(full_path)
+        print 'Loading data from pickled file'
+    feature_extractions, relation_lexicon, data, gold_standard = unpickle_objects(pickled_dataset)
     indexedDataset = DatasetManager(data, relation_lexicon, rng, verbose=verbose)
     return indexedDataset, gold_standard
 
@@ -457,23 +460,24 @@ def fix_parsing(bool_flag):
 
 def get_command_args(program_name):
     parser = argparse.ArgumentParser(prog=program_name, description='Trains a basic Open Information Extraction Model', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--dataset', required=True, help='the pickled dataset file (produced by OiePreprocessor.py)')
-    parser.add_argument('--epochs', type=int, default=100, help='maximum number of cur_epoch')
-    parser.add_argument('--learning_rate', type=float, default=0.1, help='initial learning rate')
-    parser.add_argument('--batch_size', type=int, default=50, help='size of the minibatches')
-    parser.add_argument('--embed_size', type=int, default=30, help='embedding space dimensionality')
-    parser.add_argument('--relations', type=int, default=3, help='number of semantic relation to induce')
-    parser.add_argument('--neg_samples', type=int, default=5, help='number of negative samples to take per entity')
-    parser.add_argument('--l1', metavar='lambda_1', type=float, default=0.0, help="value of the 'lambda' L1-norm regularization coefficient")
-    parser.add_argument('--l2', metavar='lambda_2', type=float, default=0.0, help="value of the 'lambda' L2-norm regulatization coefficient")
-    parser.add_argument('--optimizer', metavar='optimization_algorithm', type=str, default='adagrad', help="optimization algorithm one of {'sgd', 'adagrad'}")
-    parser.add_argument('--model_name', required=True, type=str, help='Name or ID of the decoder_type')
-    parser.add_argument('--decoder_type', metavar='decoder_type', type=str, required=True, help="decoder_type model; one of {'rescal', 'sp', 'rescal+sp'} for 'RESCAL' bilinear, 'Selectional Preferences', 'RESCAL + SP hybrid'")
-    parser.add_argument('--ext_emb', action='store_true', default='False', help='external embeddings')
-    parser.add_argument('--ext_reg', action='store_true', default='True', help='regularize decoder_type model parameters as well')
-    parser.add_argument('--freq_eval', action='store_true', default='False', help='use frequent evaluation')
-    parser.add_argument('--alpha', metavar='alpha_value', type=float, default=1.0, help='alpha coefficient for scaling the entropy term')
-    parser.add_argument('--seed', metavar='seed_number', type=int, default=2, help='random seed')
+    # parser = argparse.ArgumentParser(prog=program_name, description='Trains a basic Open Information Extraction Model')
+    parser.add_argument('dataset', help='the pickled dataset file (produced by OiePreprocessor.py)')
+    parser.add_argument('--epochs', type=int, default=100, help='the number of training epochs')
+    parser.add_argument('--learning-rate', dest='learning_rate', type=float, default=0.1, help='the initial learning rate')
+    parser.add_argument('--batch-size', dest='batch_size', type=int, default=50, help='the size of the minibatches')
+    parser.add_argument('--embed-size', dest='embed_size', type=int, default=30, help='the embedding space dimensionality')
+    parser.add_argument('--relations', type=int, default=3, help='the number of semantic relation to induce')
+    parser.add_argument('--neg-samples', dest='neg_samples', type=int, default=5, help='the number of negative samples to take per entity')
+    parser.add_argument('--l1', metavar='lambda_1', type=float, default=0.0, help='the value of the L1-norm regularization coefficient')
+    parser.add_argument('--l2', metavar='lambda_2', type=float, default=0.0, help='the value of the L2-norm regulatization coefficient')
+    parser.add_argument('--optimizer', choices=['adagrad', 'sgd'], type=str, default='adagrad', help='the optimization algorithm')
+    parser.add_argument('--model-name', dest='model_name', required=True, type=str, help='a name to be given to the trained model instanceor')
+    parser.add_argument('--decoder', choices=['rescal', 'sp', 'rescal+sp'], type=str, help='the type of factorization model to be used as the decoder (sp: selectional preferences)')
+    parser.add_argument('--ext-emb', dest='ext_emb', action='store_true', default='False', help='use external embeddings')
+    parser.add_argument('--ext-reg', dest='ext_reg', action='store_true', default='True', help='regularize the factorization (decoder) model parameters as well')
+    parser.add_argument('--freq-eval', dest='freq_eval', action='store_true', default='False', help='use frequent evaluation')
+    parser.add_argument('--alpha', type=float, default=1.0, help='the alpha coefficient for scaling the entropy term')
+    parser.add_argument('--seed', type=int, default=2, help='a seed number')
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -490,7 +494,7 @@ if __name__ == '__main__':
     rand = np.random.RandomState(seed=args.seed)
     indexedData, goldStandard = load_data(args.dataset, rand, verbose=True)
     inducer = ReconstructInducer(indexedData, goldStandard, rand, args.epochs, args.learning_rate, args.batch_size,
-                                 args.embed_size, args.relations, args.neg_samples, args.l1, args.l2, args.optimizer, args.model_name, args.decoder_type,
+                                 args.embed_size, args.relations, args.neg_samples, args.l1, args.l2, args.optimizer, args.model_name, args.decoder,
                                  args.ext_emb, args.ext_reg, args.freq_eval, args.alpha)
     inducer.train()
-    inducer.save(inducer.modelName)
+    inducer.save()
