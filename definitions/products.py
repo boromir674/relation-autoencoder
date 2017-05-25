@@ -27,9 +27,30 @@ class TrainProductsLoader:
             self.metrics[split][metric][self.ind2[split]] = metrics_scores[i]
         self.ind2[split] += 1
 
-    def create_train_error_figure(self):
+    def create_train_error_figure(self, name):
         fig = create_figure([Plot([self.train_error_series], labels=[None], x_label='epoch', y_label='error')], 'Error evolution')
-        fig.savefig('test_fig')
+        fig.savefig(s.plots_path + '/' + name)
+
+    # def create_prec_rec_graph(self, split, name):
+    #     fig = create_figure([Plot()])
+    #
+    #     fig = pl.figure(1)
+    #     for i in xrange(grid[1]):
+    #         for j in xrange(grid[0]):
+    #             ax = fig.add_subplot(grid[0] * grid[1], i + 1, j + 1)
+    #             ax.set_ylim(bottom=plots[i + j].y_low, top=plots[i + j].y_high, auto=True)
+    #             ax.set_xlabel(plots[i + j].x_label)
+    #             ax.set_ylabel(plots[i + j].y_label)
+    #             ax.get_xaxis().set_major_locator(MaxNLocator(integer=True))
+    #             for single_var_series, var_label in zip(plots[i + j].series, plots[i + j].labels):
+    #                 t = range(1, len(single_var_series) + 1)
+    #                 line, = ax.plot(t, single_var_series)
+    #                 line.set_label(var_label)
+    #             if len(plots[i + j].labels) != 1 or plots[i + j].labels[0] is not None:
+    #                 ax.legend()
+    #     fig.suptitle(a_title, fontsize=12)
+    #     return fig
+
 
 if __name__ == '__main__':
     pr = TrainProductsLoader(4)
