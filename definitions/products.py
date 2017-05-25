@@ -1,6 +1,7 @@
 import numpy as np
 import settings as s
 from evaluation.plot import *
+import cPickle as pickle
 
 metrics = ['f1', 'pre', 'rec']
 
@@ -30,7 +31,11 @@ class TrainProductsLoader:
     def create_train_error_figure(self, name):
         fig = create_figure([Plot([self.train_error_series], labels=[None], x_label='epoch', y_label='error')], 'Error evolution')
         fig.savefig(s.plots_path + '/' + name)
-
+    
+    def save(self, name):
+        with open(name, 'wb') as f:
+            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+        
     # def create_prec_rec_graph(self, split, name):
     #     fig = create_figure([Plot()])
     #

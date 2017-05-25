@@ -108,7 +108,7 @@ class ReconstructInducer(object):
         self.modelFunc = OieModelFunctions(self.rng, self.embedSize, self.relationNum, self.neg_sample_num, self.batch_size, self.decoder_type, self.data, self.extendedReg, self.alpha, external_embeddings=self.extEmb)
 
     def save(self):
-        """Saves the OieInduction instantiated object in a file with the given name in the directory specifiend in settings\n.
+        """Saves the OieInduction instantiated object in a file with the given name in the directory specified in settings\n.
         Discards any compiled functions (train and labeling functions) and then pickles the object\n
         """
         self.func = {}
@@ -163,8 +163,9 @@ class ReconstructInducer(object):
         startTime = time.clock()
         self.learn(debug=False)
         train_duration = time.clock() - startTime
-        if self.plot_flag:
-            self.train_products.create_train_error_figure(self.modelName)
+        # if self.plot_flag:
+        #     self.train_products.create_train_error_figure(self.modelName)
+        self.train_products.save(settings.retreival_metrics + '/' + self.modelName)
         print >> sys.stderr, 'Compiling completed in {:.1f}s'.format(compile_duration)
         print >> sys.stderr, 'Training completed in {:.1f}s'.format(train_duration)
         print 'Trained for {} epochs. Avg epoch duration: {:.1f}s'.format(self.cur_epoch, train_duration / float(self.cur_epoch))
