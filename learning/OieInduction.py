@@ -195,7 +195,7 @@ class ReconstructInducer(object):
                     elif self._mode() == 2:
                         print batch_ind * self.batch_size, batch_ind, '############################################################'
                         for split in settings.split_labels[1:]:
-                            self.cluster[split] = get_clusters_sets(self.func['label_'+split], self.batch_reps[split])
+                            self.cluster[split] = get_clusters_sets(self.func['label_'+split], self.batch_reps[split], self.relationNum)
                             self._evaluate(split, print_clusters=False, store=False)
 
             self.train_products.feed_train_error(err)
@@ -405,14 +405,15 @@ def pickle_posteriors(posteriors, posteriors_name):
 
 def load_model(name):
     """
-    Unpickles the oie decoder_type from the input file
+    Unpickles the relation inducer model from the input file
     :param name: file containing pickled object, instance of ReconstructInducer
     :type name: str
     :return: the unpickled object
     :rtype: ReconstructInducer
     """
     with open(settings.models_path + name, 'rb') as pickled_file:
-        return pickle.load(pickled_file)
+        learner = pickle.load(pickled_file)
+        assert isinstance(learner, ReconstructInducer), "Expected to load an instance of ReconstructInducer object. Got a '{}' instead".format(type(learner))
 
 
 def load_data(pickled_dataset, rng, verbose=False):
