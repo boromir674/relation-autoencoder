@@ -222,7 +222,10 @@ class ReconstructInducer(object):
     def _evaluate(self, split, print_clusters=True, store=False):
         self.evaluator[split].feed_induced_clusters(self.cluster[split])
         f1, pre, rec = self.evaluator[split].compute_metrics()
-        print '{} f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(split, f1, pre, rec)
+        f1_c, pre_c, rec_c, f1_uc, pre_uc, rec_uc = self.evaluator[split].compute_metrics_1()
+        print '{} elem f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(split.upper(), f1, pre, rec)
+        print '{} clus f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(split.upper(), f1_c, pre_c, rec_c)
+        print '{} muc  f1: {:.4f} pre: {:.4f} rec: {:.4f}'.format(split.upper(), f1_uc, pre_uc, rec_uc)
         if print_clusters:
             printer.print_clusters(self.cluster[split], self.data, split, settings.elems_to_visualize)
         if store:
@@ -270,6 +273,8 @@ class ReconstructInducer(object):
             raise Exception("Optimizer '{}' not implemented".format(self.optimization))
 
     def _check_for_compiled_functions(self):
+        if self.func == {}:
+            return False
         if self._mode() == 1:
             if self.func['train'] is not None and self.func['label_train'] is not None:
                 return True
@@ -329,7 +334,7 @@ def get_clusters_sets(labeling_func, nb_bathces, nb_relations):
     :param nb_relations: the number of clusters/semantic relations to induce
     :type nb_relations: int
     :return: the dictionary mapping cluster IDs int => sets with example indices int
-    :rtype: dict
+    :rtype: dict int2set (of ints)
     """
     clusters = {}
     for i in xrange(nb_relations):
