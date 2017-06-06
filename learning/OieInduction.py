@@ -112,7 +112,7 @@ class ReconstructInducer(object):
         Discards any compiled functions (train and labeling functions) and then pickles the object\n
         """
         self.func = {}
-        with open(settings.models_path + '/' + self.modelName, 'wb') as f:
+        with open(settings.models_path + '/' + 'model_' + self.modelName, 'wb') as f:
             pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     def compile_function(self):
@@ -165,12 +165,12 @@ class ReconstructInducer(object):
         train_duration = time.clock() - startTime
         # if self.plot_flag:
         #     self.train_products.create_train_error_figure(self.modelName)
-        self.train_products.save(settings.retreival_metrics + '/' + self.modelName)
+        self.train_products.save(settings.retreival_metrics + '/' + 'products_' + self.modelName)
         print >> sys.stderr, 'Compiling completed in {:.1f}s'.format(compile_duration)
         print >> sys.stderr, 'Training completed in {:.1f}s'.format(train_duration)
         print 'Trained for {} epochs. Avg epoch duration: {:.1f}s'.format(self.cur_epoch, train_duration / float(self.cur_epoch))
 
-    def learn(self, debug=True):
+    def learn(self, debug=False):
         print 'Training model on {} examples'.format(self.data.split['train'].get_size())
         doneLooping = False
         epoch = 0
@@ -405,7 +405,7 @@ def pickle_posteriors(posteriors, posteriors_name):
 
 def load_model(name):
     """
-    Unpickles the relation inducer model from the input file
+    Unpickles the relation inducer model from the input file which is expected to be located in the settings.model_path directory
     :param name: file containing pickled object, instance of ReconstructInducer
     :type name: str
     :return: the unpickled object
@@ -414,6 +414,7 @@ def load_model(name):
     with open(settings.models_path + name, 'rb') as pickled_file:
         learner = pickle.load(pickled_file)
         assert isinstance(learner, ReconstructInducer), "Expected to load an instance of ReconstructInducer object. Got a '{}' instead".format(type(learner))
+    return learner
 
 
 def load_data(pickled_dataset, rng, verbose=False):
