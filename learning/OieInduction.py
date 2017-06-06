@@ -317,15 +317,10 @@ class ReconstructInducer(object):
         else:
             raise Exception("Either 'train' split or 'train', 'valid' and 'test' splits should be defined")
 
-    @staticmethod
-    def _write_metrics(list_of_metrics, a_file):
-        """Appends list elements to the given file"""
-        with open(a_file, 'a+') as f:
-            f.write(' '.join(list_of_metrics) + '\n')
-
 
 def get_clusters_sets(labeling_func, nb_bathces, nb_relations):
     """Build cluster ID => set of examples classified/clustered.\n
+    Build int => set of ints.\n
     Assigns class labels to the dataset split by maping cluster IDs (int) to sets of example indices (int)\n
     :param labeling_func: label prediction function
     :type labeling_func: callable
@@ -474,13 +469,13 @@ def get_command_args(program_name):
     parser.add_argument('--learning-rate', dest='learning_rate', type=float, default=0.1, help='the initial learning rate')
     parser.add_argument('--batch-size', dest='batch_size', type=int, default=50, help='the size of the minibatches')
     parser.add_argument('--embed-size', dest='embed_size', type=int, default=30, help='the embedding space dimensionality')
-    parser.add_argument('--relations', type=int, default=3, help='the number of semantic relation to induce')
+    parser.add_argument('--relations', type=int, default=7, help='the number of semantic relation to induce')
     parser.add_argument('--neg-samples', dest='neg_samples', type=int, default=5, help='the number of negative samples to take per entity')
     parser.add_argument('--l1', metavar='lambda_1', type=float, default=0.0, help='the value of the L1-norm regularization coefficient')
     parser.add_argument('--l2', metavar='lambda_2', type=float, default=0.0, help='the value of the L2-norm regulatization coefficient')
     parser.add_argument('--optimizer', choices=['adagrad', 'sgd'], type=str, default='adagrad', help='the optimization algorithm')
     parser.add_argument('--model-name', dest='model_name', required=True, type=str, help='a name to be given to the trained model instanceor')
-    parser.add_argument('--decoder', choices=['rescal', 'sp', 'rescal+sp'], type=str, help='the type of factorization model to be used as the decoder (sp: selectional preferences)')
+    parser.add_argument('--decoder', choices=['rescal', 'sp', 'rescal+sp'], type=str, default='rescal+sp', help='the type of factorization model to be used as the decoder (sp: selectional preferences)')
     parser.add_argument('--ext-emb', dest='ext_emb', action='store_true', default='False', help='use external embeddings')
     parser.add_argument('--ext-reg', dest='ext_reg', action='store_true', default='True', help='regularize the factorization (decoder) model parameters as well')
     parser.add_argument('--freq-eval', dest='freq_eval', action='store_true', default='False', help='use frequent evaluation')
