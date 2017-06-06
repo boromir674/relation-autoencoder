@@ -43,25 +43,21 @@ class SingleLabelClusterEvaluation:
             F1B3 = (2 * recB3 * precB3) / (recB3 + precB3)
         return F1B3, precB3, recB3
 
-    def get_f1(self):
-        recB3 = self.b3_total_element_recall()
-        precB3 = self.b3_total_element_precision()
-        if recB3 == 0.0 and precB3 == 0.0:
+    def compute_metrics_1(self):
+        """Calls the rest of the evaluation computing methods"""
+        pre = self.b3_total_cluster_precision()
+        rec = self.b3_total_cluster_recall()
+        pre_uc = self.muc3_precision()
+        rec_uc = self.muc3_recall()
+        f1 = self.f1_computer(pre, rec)
+        f1_uc = self.f1_computer(pre_uc, rec_uc)
+        return f1, pre, rec, f1_uc, pre_uc, rec_uc
+
+    def f1_computer(self, precision, recall):
+        if precision == 0 and recall == 0:
             return 0.0
         else:
-            return (2 * recB3 * precB3) / (recB3 + precB3)
-
-    def get_f_n(self, n):
-        if n == 1:
-            return self.get_f1()
-        else:
-            recB3 = self.b3_total_element_recall()
-            precB3 = self.b3_total_element_precision()
-            betasquare = n**2
-            if recB3 == 0.0 and precB3 == 0.0:
-                return 0.0
-            else:
-                return ((1 + betasquare) * recB3 * precB3) / ((betasquare * precB3) + recB3)
+            return (2 * precision * recall) / float(precision + recall)
 
     def precision(self, retrieved_members, true_members):
         """Computes precision\n
@@ -109,10 +105,10 @@ class SingleLabelClusterEvaluation:
         denominator = 0.0
         for cluster_id, predicted_members in self.induced_clusters.iteritems():
             if len(predicted_members) > 0:
-                numerator += self._len_assessable_response_cat(predicted_members) - self.overlap(predicted_members, self.gold_clusters)
                 lenRespo = self._len_assessable_response_cat(predicted_members)
+                numerator += lenRespo - self.overlap(predicted_members, self.gold_clusters)
                 if lenRespo != 0:
-                    denominator += self._len_assessable_response_cat(predicted_members) - 1
+                    denominator += lenRespo - 1
         if denominator == 0.0:
             return 0.0
         else:
@@ -210,6 +206,13 @@ class SingleLabelClusterEvaluation:
 
     @staticmethod
     def overlap(reference_members, predicted_clusters):
+        """
+        Counts the number of times the reference_members set has at least one member in common with one of the sets in the
+        predicted_clusters dict.\n
+        :param reference_members:
+        :param predicted_clusters:
+        :return: the counter defined above
+        """
         numberIntersections = 0
         for predicted_members in predicted_clusters.itervalues():
             if len(reference_members.intersection(predicted_members)) > 0:
