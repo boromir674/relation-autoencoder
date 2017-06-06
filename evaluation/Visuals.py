@@ -2,6 +2,32 @@ import operator
 from collections import Counter
 
 
+class ModelPrinter(object):
+
+    def __init__(self, a_trained_model):
+        """
+        :param a_trained_model:
+        :type a_trained_model: learning.OieInduction.ReconstructInducer
+        """
+        self.model = a_trained_model
+
+    def print_triggers(self, split, nb_elements):
+        """
+        Prints the clustered triggers, found in the specified dataset split
+        :param split: {'train', 'valid', 'test'}
+        :param nb_elements:
+        """
+        Visualizator.print_clusters(self.model.cluster[split], self.model.data, split, nb_elements)
+
+    def print_labels(self, split, nb_elements):
+        """
+        Print groundtruth/goldstandard labels, found in the specified dataset split
+        :param split: {'train', 'valid', 'test'}
+        :param nb_elements:
+        """
+        Visualizator.print_clusters(self.model.cluster[split], self.model.data, split, nb_elements, goldstandard=self.model.goldStandard)
+
+
 class Visualizator(object):
 
     @staticmethod
