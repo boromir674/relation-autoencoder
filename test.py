@@ -5,14 +5,14 @@ import numpy as np
 from learning.OieInduction import *
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
-datasets = ['train.pk', 'sample.pk']
+dataset = '/Data/thesis/data/sample-t-v-t.pk'
 names = ['ut1', 'Test']
 
 rand = np.random.RandomState(seed=2)
 
 
 def get_command(dataset_file, model_name):
-    return 'python {} --data {} --ep 2 --l2 0.1 --emb 10 --dec rescal+sp --model_name {} >/dev/null'.format(cur_dir + '/learning/OieInduction.py', dataset_file, model_name)
+    return 'python {} --pick {} --ep 2 --l2 0.1 --emb 10 --opt 1 --model AC --alpha 0.1 --model_name {} >/dev/null'.format(cur_dir + '/learning/OieInduction.py', dataset_file, model_name)
 
 
 def my_try(callback):
@@ -25,28 +25,28 @@ def my_try(callback):
 
 class TestInductionLearn(unittest.TestCase):
 
-    def test_mode_1(self):
-        """Test with given dataset containing only train split"""
-        failed = False
-        indexed_data, gold_standard = load_data(datasets[0], rand, verbose=False)
-        ai_demek = ReconstructInducer(indexed_data, gold_standard, rand, 2, 0.1, 100, 10, 5, 5, 0, 0.1, 'adagrad', names[0], 'rescal+sp', False, True, False, 0.1)
-        try:
-            ai_demek.train()
-        except RuntimeError:
-            failed = True
-        if not failed:
-            ai_demek.initialize()
-            ai_demek.modelName = names[1]
-            ai_demek.frequentEval = True
-            try:
-                ai_demek.train()
-            except RuntimeError:
-                failed = True
-        self.assertEqual(failed, False)
+    # def test_mode_1(self):
+    #     """Test with given dataset containing only train split"""
+    #     failed = False
+    #     indexed_data, gold_standard = load_data(datasets[0], rand, verbose=False)
+    #     ai_demek = ReconstructInducer(indexed_data, gold_standard, rand, 2, 0.1, 100, 10, 5, 5, 0, 0.1, 'adagrad', names[0], 'rescal+sp', False, True, False, 0.1)
+    #     try:
+    #         ai_demek.train()
+    #     except RuntimeError:
+    #         failed = True
+    #     if not failed:
+    #         ai_demek.initialize()
+    #         ai_demek.modelName = names[1]
+    #         ai_demek.frequentEval = True
+    #         try:
+    #             ai_demek.train()
+    #         except RuntimeError:
+    #             failed = True
+    #     self.assertEqual(failed, False)
 
     def test_mode_2(self):
-        """Test with given dataset containing only 'train', 'valid', 'test' splits"""
-        exit_code = os.system(get_command(datasets[1], 'ut2')) >> 8
+        """Test with given dataset containing 'train', 'valid', 'test' splits"""
+        exit_code = os.system(get_command(dataset, 'ut2')) >> 8
         self.assertEqual(exit_code, 0)
 
 if __name__ == '__main__':
