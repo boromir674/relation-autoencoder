@@ -419,12 +419,13 @@ class ReconstructInducer(object):
 
 def saveModel(model, name):
     pklProtocol = 2
-    pklFile = open(settings.models_path + name, 'wb')
-    pickle.dump(model, pklFile, protocol=pklProtocol)
+    with open(settings.models_path + name, 'wb') as pklFile:
+        pickle.dump(model, pklFile, protocol=pklProtocol)
 
 def loadModel(name):
-    pklFile = open(settings.models_path + name, 'rb')
-    return pickle.load(pklFile)
+    with open(settings.models_path + name, 'rb') as pklFile:
+        _ = pickle.load(pklFile)
+    return _
 
 def loadData(args, rng, negativeSamples, relationNum, modelType):
 
