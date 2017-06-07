@@ -477,7 +477,7 @@ def get_command_args(program_name):
     parser.add_argument('--model-name', dest='model_name', required=True, type=str, help='a name to be given to the trained model instanceor')
     parser.add_argument('--decoder', choices=['rescal', 'sp', 'rescal+sp'], type=str, default='rescal+sp', help='the type of factorization model to be used as the decoder (sp: selectional preferences)')
     parser.add_argument('--ext-emb', dest='ext_emb', action='store_true', default='False', help='use external embeddings')
-    parser.add_argument('--ext-reg', dest='ext_reg', action='store_true', default='True', help='regularize the factorization (decoder) model parameters as well')
+    parser.add_argument('--ext-reg', dest='ext_reg', action='store_true', help='regularize the factorization (decoder) model parameters as well')
     parser.add_argument('--freq-eval', dest='freq_eval', action='store_true', default='False', help='use frequent evaluation')
     parser.add_argument('--alpha', type=float, default=1.0, help='the alpha coefficient for scaling the entropy term')
     parser.add_argument('--seed', type=int, default=2, help='a seed number')
