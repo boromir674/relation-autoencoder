@@ -251,7 +251,10 @@ def get_arguments():
     args_parser = ArgumentParser(description='Demonstrate feature extraction')
     args_parser.add_argument('-d', nargs='+', default='all', help="The features of which to demonstrate extraction. It can be one of 'clean', 'all' or a list of feature definitions. By default demonstrate 'all' of them")
     args_parser.add_argument('-n', nargs='?', default='1', type=int)
-    return args_parser.parse_args()
+    arguments = args_parser.parse_args()
+    if arguments.d == ['all'] or arguments.d == ['clean']:
+        arguments.d = arguments.d[0]
+    return arguments
 
 
 def demo(feature_def, n_points):
@@ -283,9 +286,10 @@ bag_of_feature_defs = (bow, bow_clean, before_arg1, after_arg2, bigrams, trigram
 
 if __name__ == '__main__':
     args = get_arguments()
-    if args.d == ['all']:
+    print str(args)
+    if args.d == 'all':
         feats = bag_of_feature_defs
-    elif args.d == ['clean']:
+    elif args.d == 'clean':
         feats = getBasicCleanFeatures()
     else:
         feats = [globals()[_] for _ in args.d]
