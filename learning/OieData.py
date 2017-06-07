@@ -94,16 +94,24 @@ class DatasetManager(object):
         return len(self.arg2Id)
 
     def get_dimensionality(self):
-        """Returns the number of unique featues extracted from the whole dataset"""
+        """Returns the number of unique features extracted from the whole dataset"""
         return self.featureLex.get_feature_space_dimensionality()
 
     def get_example_feature(self, an_id, a_split, feature):
         """Returns the feature string (i.e. 'posPatternPath#POS_CD_NN_IN_DT') for the input example's ID (which is in the 'train' split), matching the input feature function string (i.e. 'posPatternPath'). Returns None if not found."""
-        for e in self.split[a_split].xFeats[an_id].nonzero()[1]:  # iterate through the indices of the features triggering of the examples in the 'train' split
+        for e in self.split[a_split].xFeats[an_id].nonzero()[1]:  # iterate through the indices of the features triggering of the examples in the specified split
             feat = self.featureLex.get_str_pruned(e)  # get feature string (i.e. 'arg1_lower#java'), if has passed thresholding
             if self.featureLex.get_str_pruned(e).find(feature) > -1:
                 return feat
         return None
+
+    def getExampleFeatures(self, iid):
+        a = []
+        for e in self.split['train'].xFeats[iid].nonzero()[1]:
+            feat = self.featureLex.get_str_pruned(e)
+            if self.featureLex.get_str_pruned(e).find('trigger') > -1:  # or self.featureLex.get_str_pruned(e).find('arg1') > -1 or self.featureLex.get_str_pruned(e).find('arg2') > -1:
+                a.append(feat)
+        return a
 
     def get_neg_sampling_cum(self):
         """

@@ -13,7 +13,7 @@ class ModelPrinter(object):
 
     def print_triggers(self, split, nb_elements):
         """
-        Prints the clustered triggers, found in the specified dataset split
+        Prints the clustered triggers (sorted by frequency in descending order), found in the specified dataset split
         :param split: {'train', 'valid', 'test'}
         :param nb_elements:
         """
@@ -21,11 +21,28 @@ class ModelPrinter(object):
 
     def print_labels(self, split, nb_elements):
         """
-        Print groundtruth/goldstandard labels, found in the specified dataset split
+        Prints groundtruth/goldstandard labels (sorted by frequency in descending order), found in the specified dataset split
         :param split: {'train', 'valid', 'test'}
         :param nb_elements:
         """
         Visualizator.print_clusters(self.model.cluster[split], self.model.data, split, nb_elements, goldstandard=self.model.goldStandard)
+
+
+    def print_info(self, split, nb_elements):
+        for cl_id, members in self.model.cluster[split].iteritems():
+            print cl_id,
+            if len(members) < nb_elements:
+                for elem in members:
+                    print elem, self.model.data.getExampleFeatures(elem),
+            else:
+                count = 0
+                for elem in members:
+                    if count > nb_elements:
+                        break
+                    else:
+                        print elem, self.model.data.getExampleFeatures(elem),
+                        count += 1
+            print ''
 
 
 class Visualizator(object):
