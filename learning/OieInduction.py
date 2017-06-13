@@ -429,12 +429,12 @@ def loadModel(name):
 
 def loadData(args, rng, negativeSamples, relationNum, modelType):
 
-    if not os.path.exists(args.pickled_dataset):
+    if not os.path.exists(args.dataset):
         print "Pickled dataset not found"
         sys.exit()
 
     tStart = time.time()
-    print "Found existing pickled dataset, loading...",
+    print "Found pickled dataset, loading...",
 
     pklFile = open(args.pickled_dataset, 'rb')
 
@@ -585,115 +585,89 @@ def getClustersWithRelationLabels(clusterSets, data, evaluation, threshold):
                         count += 1
         print ''
 
+def get_command_args(program_name):
+    parser = argparse.ArgumentParser(prog=program_name, description='Trains a basic Open Information Extraction Model', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    # parser = argparse.ArgumentParser(prog=program_name, description='Trains a basic Open Information Extraction Model')
+    parser.add_argument('dataset', help='the pickled dataset file (produced by OiePreprocessor.py)')
+    parser.add_argument('--epochs', type=int, default=100, help='the number of training epochs')
+    parser.add_argument('--learning-rate', dest='learning_rate', type=float, default=0.1, help='the initial learning rate')
+    parser.add_argument('--batch-size', dest='batch_size', type=int, default=50, help='the size of the minibatches')
+    parser.add_argument('--embed-size', dest='embed_size', type=int, default=30, help='the embedding space dimensionality')
+    parser.add_argument('--relations', type=int, default=7, help='the number of semantic relation to induce')
+    parser.add_argument('--neg-samples', dest='neg_samples', type=int, default=5, help='the number of negative samples to take per entity')
+    parser.add_argument('--l1', metavar='lambda_1', type=float, default=0.0, help='the value of the L1-norm regularization coefficient')
+    parser.add_argument('--l2', metavar='lambda_2', type=float, default=0.0, help='the value of the L2-norm regulatization coefficient')
+    parser.add_argument('--optimizer', choices=['adagrad', 'sgd'], type=str, default='adagrad', help='the optimization algorithm')
+    parser.add_argument('--model-name', dest='model_name', required=True, type=str, help='a name to be given to the trained model instanceor')
+    parser.add_argument('--decoder', choices=['rescal', 'sp', 'rescal+sp'], type=str, default='rescal+sp', help='the type of factorization model to be used as the decoder (sp: selectional preferences)')
+    parser.add_argument('--ext-emb', dest='ext_emb', action='store_true', default='False', help='use external embeddings')
+    parser.add_argument('--ext-reg', dest='ext_reg', action='store_true', default='True', help='regularize the factorization (decoder) model parameters as well')
+    parser.add_argument('--freq-eval', dest='freq_eval', action='store_true', default='False', help='use frequent evaluation')
+    parser.add_argument('--alpha', type=float, default=1.0, help='the alpha coefficient for scaling the entropy term')
+    parser.add_argument('--seed', type=int, default=2, help='a seed number')
+    parser.add_argument('--fixed-sampling', dest='fixed_sampling', nargs='?', default='False', help='fixed/dynamic sampling switch')
 
-def getCommandArgs():
-    parser = argparse.ArgumentParser(description='Trains a basic Open Information Extraction Model')
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
 
-    parser.add_argument('--pickled_dataset', metavar='pickled_dataset', nargs='?', required=True,
-                        help='the pickled dataset file (produced by OiePreprocessor.py)')
-
-    parser.add_argument('--epochs', metavar='epochs', nargs='?', type=int, default=100,
-                        help='maximum number of epochs')
-
-    parser.add_argument('--learning_rate', metavar='learning_rate', nargs='?', type=float, default=0.1,
-                        help='initial learning rate')
-
-    parser.add_argument('--batch_size', metavar='batch_size', nargs='?', type=int, default=50,
-                        help='size of the minibatches')
-
-    parser.add_argument('--embed_size', metavar='embed_size', nargs='?', type=int, default=30,
-                        help='initial learning rate')
-
-    parser.add_argument('--relations_number', metavar='relations_number', type=int, nargs='?', default=3,
-                        help='number of relations to induce')
-
-    parser.add_argument('--negative_samples_number', metavar='negative_samples_number', nargs='?', type=int, default=5,
-                        help='number of negative samples')
-
-    parser.add_argument('--l1_regularization', metavar='l1_regularization', nargs='?', type=float, default=0.0,
-                        help='lambda value of L1 regulatization')
-
-    parser.add_argument('--l2_regularization', metavar='l2_regularization', nargs='?', type=float, default=0.0,
-                        help='lambda value of L2 regulatization')
-
-    parser.add_argument('--optimization', metavar='optimization', nargs='?', type=int, default='0',
-                        help='optimization algorithm 0 SGD, 1 ADAGrad, 2 ADADelta. Default SDG.')
-
-    parser.add_argument('--model_name', metavar='model_name', nargs='?', required=True, type=str,
-                        help='Name or ID of the model')
-
-    parser.add_argument('--model', metavar='model', nargs='?', type=str, required=True,
-                        help='Model Type choose among A, C, AC.')
-
-    parser.add_argument('--fixed_sampling', metavar='fixed_sampling', nargs='?', default='False',
-                        help='fixed/dynamic sampling switch, default fixed sampling')
-
-    parser.add_argument('--ext_emb', metavar='ext_emb', nargs='?', default='False',
-                        help='external embeddings, default False')
-
-    parser.add_argument('--extended_reg', metavar='extended_reg', nargs='?', default='False',
-                        help='extended regularization on reconstruction parameters, default False')
-
-    parser.add_argument('--frequent_eval', metavar='frequent_eval', nargs='?', default='False',
-                        help='using frequent evaluation, default False')
-
-    parser.add_argument('--seed', metavar='seed', nargs='?', type=int, default=2,
-                        help='random seed, default 2')
-
-    parser.add_argument('--alpha', metavar='alpha', nargs='?', type=float, default=1.0,
-                        help='alpha coefficient for scaling the entropy term')
+    arg = parser.parse_args()
+    arg.ext_emb = fix_parsing(arg.ext_emb)
+    arg.ext_reg = fix_parsing(arg.ext_reg)
+    arg.freq_eval = fix_parsing(arg.freq_eval)
+    arg.fixed_sampling = fix_parsing(arg.fixed_sampling)
+    return arg
 
 
-    return parser.parse_args()
-
-
-
-
+def fix_parsing(bool_flag):
+    if bool_flag == 'False' or bool_flag == 'True':
+        return eval(bool_flag)
+    elif type(bool_flag) == bool:
+        return bool_flag
+    else:
+        raise Exception("Failed to parse '{}' of type '{}'".format(bool_flag, type(bool_flag)))
 
 if __name__ == '__main__':
-    print "Relation Learner"
-
-    args = getCommandArgs()
+    print 'Relation Learner'
+    args = get_command_args(sys.argv[0].split('/')[-1])
     print args
+
+    if args.optimizer == 'adagrad':
+        optimization = 1
+    elif args.optimizer == 'sgd':
+        optimization = 0
+
+    if args.decoder == 'rescal+sp':
+        decoder = 'AC'
+    elif args.decoder == 'sp':
+        decoder = 'C'
+    elif args.decoder == 'rescal':
+        decoder = 'A'
+
     rseed = args.seed
     rand = np.random.RandomState(seed=rseed)
 
-
-    negativeSamples = args.negative_samples_number
-    numberRelations = args.relations_number
+    negativeSamples = args.neg_samples
+    numberRelations = args.relations
     indexedData, goldStandard = loadData(args, rand, negativeSamples, numberRelations, args.model)
-
 
     maxEpochs = args.epochs
     learningRate = args.learning_rate
     batchSize = args.batch_size
     embedSize = args.embed_size
-    lambdaL1 = args.l1_regularization
-    lambdaL2 = args.l2_regularization
-    optimization = args.optimization
+    lambdaL1 = args.l1
+    lambdaL2 = args.l2
+    optimization = args.optimizer
     modelName = args.model_name
-    model = args.model
+    decoder = args.decoder
     fixedSampling = args.fixed_sampling
-    if type(args.fixed_sampling) == str:
-        fixedSampling = eval(args.fixed_sampling)
-    extEmb = args.ext_emb
-    if type(args.ext_emb) == str:
-        extEmb = eval(args.ext_emb)
-    extendedReg = args.extended_reg
-    if type(args.extended_reg) == str:
-        extendedReg = eval(args.extended_reg)
-    frequentEval = args.frequent_eval
-    if type(frequentEval) == str:
-        frequentEval = eval(frequentEval)
     alpha = args.alpha
     inducer = ReconstructInducer(indexedData, goldStandard, rand, maxEpochs, learningRate,
                                  batchSize, embedSize, lambdaL1, lambdaL2, optimization, modelName,
-                                 model, fixedSampling, extEmb, extendedReg,
-                                 frequentEval, alpha)
+                                 decoder, fixedSampling, args.ext_emb, args.ext_reg, args.freq_eval, alpha)
 
 
 
     inducer.learn()
 
     saveModel(inducer, inducer.modelName)
-
