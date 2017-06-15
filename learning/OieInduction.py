@@ -421,13 +421,14 @@ def saveModel(model, name):
     pklProtocol = 2
     with open(settings.models_path + name, 'wb') as pklFile:
         pickle.dump(model, pklFile, protocol=pklProtocol)
+    # print 'Trained model instance saved at', settings.models_path + name
 
 def loadModel(name):
     with open(settings.models_path + name, 'rb') as pklFile:
         _ = pickle.load(pklFile)
     return _
 
-def loadData(args, rng, negativeSamples, relationNum, modelType):
+def loadData(args, rng, negativeSamples, relationNum):
 
     if not os.path.exists(args.dataset):
         print "Pickled dataset not found"
@@ -436,7 +437,7 @@ def loadData(args, rng, negativeSamples, relationNum, modelType):
     tStart = time.time()
     print "Found pickled dataset, loading...",
 
-    pklFile = open(args.pickled_dataset, 'rb')
+    pklFile = open(args.dataset, 'rb')
 
     featureExtrs = pickle.load(pklFile)
 
@@ -634,7 +635,7 @@ if __name__ == '__main__':
 
     if args.optimizer == 'adagrad':
         optimization = 1
-    elif args.optimizer == 'sgd':
+    else:  # args.optimizer == 'sgd':
         optimization = 0
 
     if args.decoder == 'rescal+sp':
@@ -649,7 +650,7 @@ if __name__ == '__main__':
 
     negativeSamples = args.neg_samples
     numberRelations = args.relations
-    indexedData, goldStandard = loadData(args, rand, negativeSamples, numberRelations, args.model)
+    indexedData, goldStandard = loadData(args, rand, negativeSamples, numberRelations)
 
     maxEpochs = args.epochs
     learningRate = args.learning_rate
@@ -657,9 +658,7 @@ if __name__ == '__main__':
     embedSize = args.embed_size
     lambdaL1 = args.l1
     lambdaL2 = args.l2
-    optimization = args.optimizer
     modelName = args.model_name
-    decoder = args.decoder
     fixedSampling = args.fixed_sampling
     alpha = args.alpha
     inducer = ReconstructInducer(indexedData, goldStandard, rand, maxEpochs, learningRate,

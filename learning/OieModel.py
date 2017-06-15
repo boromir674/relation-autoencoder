@@ -1,6 +1,5 @@
 __author__ = 'diego'
 
-
 import theano.tensor as T
 import theano
 from models.encoders.RelationClassifier import IndependentRelationClassifiers
