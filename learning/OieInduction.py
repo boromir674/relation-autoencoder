@@ -220,7 +220,7 @@ class ReconstructInducer(object):
 
         if validDataNP is not None and testDataNP is not None:
             validBatchNum = validDataNP.args1.shape[0] / self.batchSize
-            validEval = singleLabelClusterEvaluation(self.goldStandard['dev'], False)
+            validEval = singleLabelClusterEvaluation(self.goldStandard['valid'], False)
 
             testBatchNum = testDataNP.args1.shape[0] / self.batchSize
             testEval = singleLabelClusterEvaluation(self.goldStandard['test'], False)

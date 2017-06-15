@@ -52,8 +52,8 @@ class DataSetManager:
         # self.validExs = self._extractExamples(oieDataset['dev'])
 
         self.trainExs = self._extractExamples(oieDataset['train'])
-        if 'dev' in oieDataset:
-            self.validExs = self._extractExamples(oieDataset['dev'])
+        if 'valid' in oieDataset:
+            self.validExs = self._extractExamples(oieDataset['valid'])
         else:
             self.validExs = None
 
