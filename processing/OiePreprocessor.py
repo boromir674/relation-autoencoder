@@ -6,7 +6,7 @@ import sys
 import time
 from definitions import OieFeatures
 from definitions import OieExample
-print sys.path
+
 import cPickle as pickle
 
 
