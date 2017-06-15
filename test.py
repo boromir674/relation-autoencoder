@@ -12,7 +12,7 @@ rand = np.random.RandomState(seed=2)
 
 
 def get_command(dataset_file, model_name):
-    return 'python {} --pick {} --ep 2 --l2 0.1 --emb 10 --opt 1 --model AC --alpha 0.1 --model_name {} >/dev/null'.format(cur_dir + '/learning/OieInduction.py', dataset_file, model_name)
+    return 'python {} {} --ep 2 --l2 0.1 --emb 10 --opt adagrad --dec rescal+sp --alpha 0.1 --model-name {} >/dev/null'.format(cur_dir + '/learning/OieInduction.py', dataset_file, model_name)
 
 
 def my_try(callback):
@@ -46,7 +46,7 @@ class TestInductionLearn(unittest.TestCase):
 
     def test_mode_2(self):
         """Test with given dataset containing 'train', 'valid', 'test' splits"""
-        exit_code = os.system(get_command(dataset, 'ut2')) >> 8
+        exit_code = os.system(get_command(dataset, 'model_unit_test')) >> 8
         self.assertEqual(exit_code, 0)
 
 if __name__ == '__main__':
